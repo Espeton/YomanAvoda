@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>בדיקת חיבור ל-Google Drive</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif; max-width:640px; margin:40px auto; padding:0 20px; background:#F6F1E4; color:#1C2430;}
+  h1{font-size:1.4rem;}
+  .card{background:#fff; border:1px solid #DCD1B4; border-radius:10px; padding:20px; margin-bottom:16px;}
+  button{background:#1F4E79; color:#fff; border:none; border-radius:6px; padding:10px 18px; font-size:14px; cursor:pointer; margin-inline-end:8px;}
+  button:disabled{opacity:.5; cursor:not-allowed;}
+  button.secondary{background:#57697A;}
+  .status{font-family:'Courier New',monospace; font-size:12.5px; white-space:pre-wrap; background:#f4f4f4; border-radius:6px; padding:10px; max-height:280px; overflow:auto; border:1px solid #ddd;}
+  .profile{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
+  .profile img{width:40px; height:40px; border-radius:50%;}
+  .ok{color:#1a7f37;}
+  .err{color:#c0392b;}
+</style>
+</head>
+<body>
+  <h1>🧪 בדיקת חיבור ל-Google Drive</h1>
+  <p>עמוד בדיקה זמני - לא חלק מהאפליקציה הראשית. מטרתו לוודא שהתחברות עם Google וגישה ל-Drive עובדות, לפני שמשלבים את זה בקוד האמיתי.</p>
+
+  <div class="card">
+    <div id="signedOutView">
+      <button id="signInBtn">התחבר עם Google</button>
+    </div>
+    <div id="signedInView" hidden>
+      <div class="profile">
+        <img id="profilePic" src="" alt="">
+        <div>
+          <div id="profileName" style="font-weight:bold;"></div>
+          <div id="profileEmail" style="color:#57697A; font-size:13px;"></div>
+        </div>
+      </div>
+      <button id="testDriveBtn">בדוק כתיבה/קריאה ב-Drive</button>
+      <button id="signOutBtn" class="secondary">התנתק</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:bold; margin-bottom:6px;">יומן פעולות</div>
+    <div class="status" id="log">ממתין...</div>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    var CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
+    var SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
+    var accessToken = null;
+    var tokenClient = null;
+
+    var logEl = document.getElementById('log');
+    function log(msg, cls){
+      var time = new Date().toLocaleTimeString('he-IL');
+      var line = document.createElement('div');
+      if(cls) line.className = cls;
+      line.textContent = '[' + time + '] ' + msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function showSignedIn(profile){
+      document.getElementById('signedOutView').hidden = true;
+      document.getElementById('signedInView').hidden = false;
+      document.getElementById('profilePic').src = profile.picture || '';
+      document.getElementById('profileName').textContent = profile.name || '(ללא שם)';
+      document.getElementById('profileEmail').textContent = profile.email || '';
+    }
+    function showSignedOut(){
+      document.getElementById('signedOutView').hidden = false;
+      document.getElementById('signedInView').hidden = true;
+      accessToken = null;
+    }
+
+    window.addEventListener('load', function(){
+      if(typeof google === 'undefined' || !google.accounts){
+        log('שגיאה: ספריית Google Identity Services לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.', 'err');
+        return;
+      }
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: function(resp){
+          if(resp.error){
+            log('שגיאה בהתחברות: ' + resp.error + (resp.error_description ? (' - ' + resp.error_description) : ''), 'err');
+            return;
+          }
+          accessToken = resp.access_token;
+          log('התקבל אישור גישה מ-Google ✓', 'ok');
+          fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: 'Bearer ' + accessToken }
+          }).then(function(r){ return r.json(); }).then(function(profile){
+            log('פרטי משתמש התקבלו: ' + profile.email, 'ok');
+            showSignedIn(profile);
+          }).catch(function(e){
+            log('שגיאה בקבלת פרטי משתמש: ' + e.message, 'err');
+          });
+        }
+      });
+      log('הדף נטען, ה-Client ID מוכן ללחיצה על "התחבר עם Google".');
+    });
+
+    document.getElementById('signInBtn').onclick = function(){
+      log('פותח חלון התחברות של Google...');
+      tokenClient.requestAccessToken({prompt: 'consent'});
+    };
+
+    document.getElementById('signOutBtn').onclick = function(){
+      if(accessToken){
+        google.accounts.oauth2.revoke(accessToken, function(){
+          log('ההרשאה בוטלה בצד Google.');
+        });
+      }
+      showSignedOut();
+      log('התנתקת.');
+    };
+
+    document.getElementById('testDriveBtn').onclick = function(){
+      if(!accessToken){ log('אין הרשאה פעילה.', 'err'); return; }
+      var btn = document.getElementById('testDriveBtn');
+      btn.disabled = true;
+      log('יוצר קובץ בדיקה ב-Drive...');
+      var fileContent = JSON.stringify({hello: 'יומן עבודה יומי', createdAt: new Date().toISOString()}, null, 2);
+      var boundary = 'yoman_avoda_boundary_' + Date.now();
+      var metadata = { name: 'yoman-avoda-test.json', mimeType: 'application/json' };
+      var multipartBody =
+        '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) + '\r\n' +
+        '--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + fileContent + '\r\n' +
+        '--' + boundary + '--';
+
+      fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + accessToken,
+          'Content-Type': 'multipart/related; boundary=' + boundary
+        },
+        body: multipartBody
+      }).then(function(createResp){
+        return createResp.json().then(function(created){
+          if(!createResp.ok) throw new Error(JSON.stringify(created));
+          return created;
+        });
+      }).then(function(created){
+        log('קובץ נוצר: ' + created.name + ' (id: ' + created.id + ') ✓', 'ok');
+        log('קורא את הקובץ בחזרה כדי לוודא...');
+        return fetch('https://www.googleapis.com/drive/v3/files/' + created.id + '?alt=media', {
+          headers: { Authorization: 'Bearer ' + accessToken }
+        });
+      }).then(function(readResp){
+        return readResp.text();
+      }).then(function(readBack){
+        log('תוכן שנקרא בחזרה: ' + readBack, 'ok');
+        log('✅ הבדיקה עברה בהצלחה - קריאה וכתיבה ל-Drive עובדות!', 'ok');
+      }).catch(function(e){
+        log('שגיאה בבדיקת Drive: ' + e.message, 'err');
+      }).finally(function(){
+        btn.disabled = false;
+      });
+    };
+  </script>
+</body>
+</html>
