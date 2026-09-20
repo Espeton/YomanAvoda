@@ -211,6 +211,16 @@
   .wc-table .wc-day-cell{font-weight:bold; background:#FAFBFC;}
   .wc-table .wc-day-cell .tbx-dow{font-size:9px; color:var(--muted); font-weight:normal; display:block;}
   .wc-table input[type=time]{width:100%;}
+  /* Print-only rendering of the work card: two half-month tables side by side (right side =
+     first half of the month, left side = second half), matching the user's paper time-card
+     layout, instead of the single long scrollable list used for on-screen editing (which
+     printed as only whatever happened to be visible on screen). Hidden on screen; shown only
+     under @media print (see .wc-print-wrap / .wc-onscreen-only there). */
+  .wc-print-wrap{display:none;}
+  .wc-print-half{flex:1; min-width:0;}
+  .wc-print-half table{width:100%; border-collapse:collapse;}
+  .wc-print-half th, .wc-print-half td{border:1px solid var(--border); padding:2px 5px; text-align:center; font-size:11px;}
+  .wc-print-half th{background:#FAFBFC;}
   .blank-form-signoff{margin-top:26px; width:220px;}
   .blank-form-signoff .sig-line{border-bottom:1px solid var(--ink); height:26px;}
   .blank-form-signoff div:last-child{text-align:center; margin-top:2px; font-size:12.5px;}
@@ -284,15 +294,34 @@
     .log-printout{page-break-before:always; break-before:page;}
     .log-printout:first-of-type{page-break-before:auto; break-before:auto;}
     .cover-page{page-break-after:always; break-after:page;}
+    /* Any matrix/grid wrapped for on-screen scrolling (toolbox matrix, work card, matrix report)
+       must show its full content when printed - overflow:auto + max-height would otherwise
+       clip it to just the portion that happened to be visible on screen ("screenshot" effect). */
+    .tbx-matrix-wrap{max-height:none !important; overflow:visible !important;}
+    .wc-onscreen-only{display:none !important;}
+    .wc-print-wrap{display:flex !important; gap:16px; align-items:flex-start;}
   }
+  /* Google Sign-In gate (Drive-backed version - see section 11 in the spec doc) */
+  #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
+  #signInGate .card{max-width:420px; width:90%;}
+  #signInGate .hint{margin-top:10px; min-height:16px;}
 </style>
 </head>
 <body>
 
-<header>
+<div id="signInGate">
+  <div class="card">
+    <h2>יומן עבודה יומי — גרסת Drive</h2>
+    <div class="note">גרסה זו שומרת את כל הנתונים ב-Google Drive שלך, כדי שכמה אנשים יוכלו להתחבר ולראות/לערוך את אותם נתונים. יש להתחבר עם חשבון Google שהוגדר כמשתמש מורשה.</div>
+    <button id="gateSignInBtn" class="btn">התחבר עם Google</button>
+    <div class="hint" id="gateStatus"></div>
+  </div>
+</div>
+
+<header style="visibility:hidden;">
   <div>
     <h1>יומן עבודה יומי — אתר בנייה</h1>
-    <div class="sub">כלי עזר אישי לתיעוד ומעקב ביצוע · ללא סנכרון, שמירה מקומית בדפדפן זה בלבד</div>
+    <div class="sub">כלי עזר אישי לתיעוד ומעקב ביצוע · מסונכרן דרך Google Drive <span id="driveSaveStatus" class="hint" style="display:inline;"></span></div>
   </div>
   <button id="homeBtn" class="btn secondary small no-print" style="display:none;">⌂ חזרה לעמוד הראשי</button>
 </header>
@@ -303,66 +332,70 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
-/* ===================== Storage layer ===================== */
-const DB = {
-  get(key, fallback){ try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; } },
-  set(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
-};
-const KEYS = { projects:'clog_projects', contractors:'clog_contractors', logs:'clog_logs', locations:'clog_locations', subProjects:'clog_subProjects', company:'clog_company', crews:'clog_crews', workers:'clog_workers', toolboxRecords:'clog_toolboxRecords', workCardEntries:'clog_workCardEntries' };
-
-let projects = DB.get(KEYS.projects, []);
-let contractors = DB.get(KEYS.contractors, []);
-let logs = DB.get(KEYS.logs, []);
-let locations = DB.get(KEYS.locations, []);
-let subProjects = DB.get(KEYS.subProjects, []);
+/* ===================== Storage layer (Google Drive - see section 11 in the spec doc) =====================
+   This version keeps localStorage retired entirely: all state lives in a single JSON file on the
+   signed-in user's Google Drive (created by this app, drive.file scope), shared with teammates so
+   everyone reads/writes the same file. The in-memory arrays below (projects, contractors, ...) are
+   populated only after sign-in + the initial Drive fetch (see driveSignInSuccess/loadOrCreateDriveFile
+   near the bottom of this script) - every other function in this file that reads/writes them is
+   unchanged from the localStorage version. */
+let projects = [];
+let contractors = [];
+let logs = [];
+let locations = [];
+let subProjects = [];
 /* Optional finer breakdown under a contractor, for contractors who supply labor as several
    named crews (e.g. one manpower contractor with 3 crews, each under its own foreman) rather
    than a single anonymous headcount. Entirely opt-in: a contractor with no crews defined keeps
    behaving exactly as before (attendance = a manually-typed worker count). */
-let crews = DB.get(KEYS.crews, []);
-let workers = DB.get(KEYS.workers, []);
+let crews = [];
+let workers = [];
 /* Standalone daily worker-presence tool ("טולבוקס"), deliberately decoupled from the
    daily log's own attendance count for now (see renderToolbox) - one record per
    project+date, listing which named workers were checked present that day. */
-let toolboxRecords = DB.get(KEYS.toolboxRecords, []);
+let toolboxRecords = [];
 /* Personal monthly time-card per named worker ("כרטיס עבודה") - actual check-in/check-out
    times, not just a presence checkmark like toolboxRecords. Not project-scoped (workers/crews
    aren't either) - one entry per worker+date, created lazily only when a time is actually
    entered. See renderWorkCard (section 4.3 in the spec doc - "כרטיס עבודה" tab). */
-let workCardEntries = DB.get(KEYS.workCardEntries, []);
+let workCardEntries = [];
 const DEFAULT_LOGO = 'data:image/png;base64,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';
-let company = DB.get(KEYS.company, {name:'', license:'', logoDataUrl: DEFAULT_LOGO});
-if(!company.logoDataUrl){ company.logoDataUrl = DEFAULT_LOGO; }
+let company = {name:'', license:'', logoDataUrl: DEFAULT_LOGO};
 
-/* Migration: make sure every project has a manager history array,
-   so historical site-manager lookups work even for projects created
-   before this feature existed. */
-projects.forEach(p=>{
-  if(!Array.isArray(p.managerHistory)){
-    p.managerHistory = p.manager ? [{manager:p.manager, from:'0001-01-01'}] : [];
-  }
-  if(typeof p.nextSerial !== 'number') p.nextSerial = 1;
-});
+/* Same three migrations that used to run once at load time against localStorage data - now run
+   once against whatever was just loaded from (or seeded into) the Drive file. Kept as their own
+   function (instead of top-level code) because loading is now async, so they can't run until
+   loadOrCreateDriveFile actually has data - see applyFullData below. */
+function runMigrations(){
+  /* Make sure every project has a manager history array, so historical site-manager lookups
+     work even for projects created before this feature existed. */
+  projects.forEach(p=>{
+    if(!Array.isArray(p.managerHistory)){
+      p.managerHistory = p.manager ? [{manager:p.manager, from:'0001-01-01'}] : [];
+    }
+    if(typeof p.nextSerial !== 'number') p.nextSerial = 1;
+  });
 
-/* Migration: same idea as managerHistory above, but for a worker's crew assignment -
-   so historical attendance stays attributed correctly even after a worker is moved
-   between crews (see crewIdAtDate). */
-workers.forEach(w=>{
-  if(!Array.isArray(w.crewHistory)){
-    w.crewHistory = w.crewId ? [{crewId:w.crewId, from:'0001-01-01'}] : [];
-  }
-});
+  /* Same idea as managerHistory above, but for a worker's crew assignment - so historical
+     attendance stays attributed correctly even after a worker is moved between crews
+     (see crewIdAtDate). */
+  workers.forEach(w=>{
+    if(!Array.isArray(w.crewHistory)){
+      w.crewHistory = w.crewId ? [{crewId:w.crewId, from:'0001-01-01'}] : [];
+    }
+  });
 
-/* Migration: assign per-project sequential serial numbers (legally required
-   day-level log numbering, like a delivery-note book) to any pre-existing
-   logs that don't have one yet, oldest date first. */
-projects.forEach(p=>{
-  const unnumbered = logs.filter(l=>l.projectId===p.id && !l.serialNumber);
-  if(unnumbered.length===0) return;
-  unnumbered.sort((a,b)=>a.date.localeCompare(b.date));
-  unnumbered.forEach(l=>{ l.serialNumber = p.nextSerial; p.nextSerial += 1; });
-});
+  /* Assign per-project sequential serial numbers (legally required day-level log numbering,
+     like a delivery-note book) to any pre-existing logs that don't have one yet, oldest date first. */
+  projects.forEach(p=>{
+    const unnumbered = logs.filter(l=>l.projectId===p.id && !l.serialNumber);
+    if(unnumbered.length===0) return;
+    unnumbered.sort((a,b)=>a.date.localeCompare(b.date));
+    unnumbered.forEach(l=>{ l.serialNumber = p.nextSerial; p.nextSerial += 1; });
+  });
+}
 function formatSerial(n){ return n ? String(n).padStart(3,'0') : ''; }
 function assignSerialIfNeeded(log){
   if(log.serialNumber) return;
@@ -373,17 +406,75 @@ function assignSerialIfNeeded(log){
   proj.nextSerial += 1;
 }
 
+/* Populates the in-memory arrays from a full-data JSON blob - shared by the Drive load on
+   startup and by the existing manual "restore from backup file" feature (restoreDataReplace),
+   so both paths apply the exact same defaulting/migrations and can't drift apart. */
+function applyFullData(data){
+  projects = Array.isArray(data.projects) ? data.projects : [];
+  contractors = Array.isArray(data.contractors) ? data.contractors : [];
+  logs = Array.isArray(data.logs) ? data.logs : [];
+  locations = Array.isArray(data.locations) ? data.locations : [];
+  subProjects = Array.isArray(data.subProjects) ? data.subProjects : [];
+  crews = Array.isArray(data.crews) ? data.crews : [];
+  workers = Array.isArray(data.workers) ? data.workers : [];
+  toolboxRecords = Array.isArray(data.toolboxRecords) ? data.toolboxRecords : [];
+  workCardEntries = Array.isArray(data.workCardEntries) ? data.workCardEntries : [];
+  company = data.company || {name:'', license:'', logoDataUrl: DEFAULT_LOGO};
+  if(!company.logoDataUrl){ company.logoDataUrl = DEFAULT_LOGO; }
+  runMigrations();
+}
+function buildFullPayload(){
+  return { exportedAt:new Date().toISOString(), projects, contractors, locations, subProjects, crews, workers, toolboxRecords, workCardEntries, company, logs };
+}
+
+/* ===================== Drive save (replaces the old DB.set/localStorage saveAll) =====================
+   Every call site in the app still just calls saveAll() exactly as before - only the
+   implementation changed. Writes are debounced (800ms, same idea as the daily-log autosave
+   timer) so rapid changes (e.g. ticking several toolbox checkboxes) become one Drive write, not
+   many. Before each actual write we re-check the file's modifiedTime against the value we last
+   saw (from the last load or the last successful write) - the lightweight optimistic-concurrency
+   check agreed on in the migration plan: if someone else's save landed in between, we do NOT
+   silently overwrite their change - we surface a warning and stop, so nothing is lost. */
+let driveSaveTimer = null;
+let driveSaveInFlight = false;
+let driveSavePending = false;
+function setDriveStatus(text){
+  const el = document.getElementById('driveSaveStatus');
+  if(el) el.textContent = text ? (' · ' + text) : '';
+}
 function saveAll(){
-  DB.set(KEYS.projects, projects);
-  DB.set(KEYS.contractors, contractors);
-  DB.set(KEYS.logs, logs);
-  DB.set(KEYS.locations, locations);
-  DB.set(KEYS.subProjects, subProjects);
-  DB.set(KEYS.company, company);
-  DB.set(KEYS.crews, crews);
-  DB.set(KEYS.workers, workers);
-  DB.set(KEYS.toolboxRecords, toolboxRecords);
-  DB.set(KEYS.workCardEntries, workCardEntries);
+  setDriveStatus('שומר...');
+  clearTimeout(driveSaveTimer);
+  driveSaveTimer = setTimeout(driveSaveNow, 800);
+}
+async function driveSaveNow(){
+  if(driveSaveInFlight){ driveSavePending = true; return; }
+  driveSaveInFlight = true;
+  try{
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`, {
+      headers:{ Authorization:'Bearer '+accessToken }
+    });
+    const meta = await metaRes.json();
+    if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
+    if(driveFileModifiedTime && meta.modifiedTime !== driveFileModifiedTime){
+      setDriveStatus('⚠ מישהו אחר שמר שינויים בינתיים - רענן את הדף לפני שממשיכים לערוך, כדי לא לדרוס אותם');
+      return;
+    }
+    const putRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime`, {
+      method:'PATCH',
+      headers:{ Authorization:'Bearer '+accessToken, 'Content-Type':'application/json' },
+      body: JSON.stringify(buildFullPayload())
+    });
+    const putJson = await putRes.json();
+    if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
+    driveFileModifiedTime = putJson.modifiedTime;
+    setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){
+    setDriveStatus('⚠ שגיאת שמירה ל-Drive: ' + e.message);
+  }finally{
+    driveSaveInFlight = false;
+    if(driveSavePending){ driveSavePending = false; driveSaveNow(); }
+  }
 }
 function uid(prefix){ return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function toast(msg){
@@ -1613,7 +1704,18 @@ function flushAutosave(){
 function renderDailyLog(main, loadId){
   const isLoadingExisting = !!loadId;
   if(loadId){ draft = JSON.parse(JSON.stringify(logs.find(l=>l.id===loadId))); editingExecContractorRows.clear(); editingPlanContractorRows.clear(); editingExcContractorRows.clear(); editingDailyWorkContractorRows.clear(); }
-  if(!draft) draft = newDraft();
+  if(!draft){
+    draft = newDraft();
+    // A brand-new draft (e.g. first opening "יומן יומי" after reloading the app) defaults to
+    // today's date - if a log for that exact project+date already exists (most likely: it was
+    // started earlier today, autosaved, and the app was then closed), continue it instead of
+    // silently starting a second, empty one. Mirrors the same today-is-not-a-duplicate logic
+    // in checkAndHandleDuplicateDate, which only fires on manual project/date changes.
+    if(draft.projectId && draft.date){
+      const existingToday = findConflictingLog(draft.projectId, draft.subProjectId, draft.date, draft.id);
+      if(existingToday) draft = JSON.parse(JSON.stringify(existingToday));
+    }
+  }
   if(!Array.isArray(draft.equipment)) draft.equipment = [];
   if(typeof draft.subProjectId !== 'string') draft.subProjectId = '';
   draft.exceptions = normalizeContractorRows(draft.exceptions);
@@ -2967,18 +3069,41 @@ function renderWorkCardGrid(){
     `;
   }).join('');
 
+  // Print-only layout: same data split into two half-month tables shown side by side
+  // (right = first half, left = second half), instead of the scrollable list above.
+  function printRows(fromDay, toDay){
+    let out = '';
+    for(let d=fromDay; d<=toDay; d++){
+      const date = `${wcMonth}-${String(d).padStart(2,'0')}`;
+      const e = workCardEntry(w.id, date);
+      const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
+      out += `<tr><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+    }
+    return out;
+  }
+  const halfSplit = Math.ceil(numDays/2);
+
   body.innerHTML = `
+    ${buildPrintHeader()}
     <div class="grid grid-3" style="align-items:flex-end;">
       <div class="field"><label>ת.ז / דרכון</label><div class="readonly-field">${esc(w.idNumber||'—')}</div></div>
       <div class="field"><label>שם ומשפחה</label><div class="readonly-field">${esc(w.name||'—')}${w.active===false?' <span class="badge gray">לא פעיל</span>':''}</div></div>
       <div class="field"><label>חודש</label><input type="month" id="wc_month" value="${wcMonth}"></div>
     </div>
-    <div class="tbx-matrix-wrap" style="max-height:60vh;">
+    <div class="tbx-matrix-wrap wc-onscreen-only" style="max-height:60vh;">
       <table class="log-table wc-table">
         <colgroup><col style="width:70px"><col><col></colgroup>
         <thead><tr><th>יום</th><th>שעת כניסה</th><th>שעת יציאה</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+    </div>
+    <div class="wc-print-wrap">
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(1, halfSplit)}</tbody></table>
+      </div>
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(halfSplit+1, numDays)}</tbody></table>
+      </div>
     </div>
     <div class="grid grid-3" style="margin-top:10px;">
       <div class="field"><label>ימים</label><div class="readonly-field" id="wc_totalDays">0</div></div>
@@ -4046,7 +4171,7 @@ function renderBackupSection(main){
   card.className='card';
   card.innerHTML = `
     <h2>גיבוי ושחזור נתונים</h2>
-    <div class="note">הגיבוי כולל את כל הפרויקטים, הקבלנים, המיקומים, פרטי החברה והיומנים (כולל תמונות) בקובץ JSON אחד לשמירה מקומית - ללא צורך באינטרנט.</div>
+    <div class="note">הנתונים בגרסה זו נשמרים אוטומטית ב-Google Drive שלך (ראו הסטטוס ליד הכותרת למעלה). כלי הגיבוי כאן משמש להורדת עותק מקומי נוסף לביטחון, או לייבוא נתונים ישנים ממכשיר/גרסה אחרת.</div>
     <div class="row-actions">
       <button class="btn" id="b_export">ייצוא גיבוי מלא</button>
     </div>
@@ -4106,33 +4231,9 @@ function renderBackupSection(main){
 }
 
 function restoreDataReplace(data){
-  projects = data.projects; contractors = data.contractors; logs = data.logs;
-  locations = Array.isArray(data.locations) ? data.locations : [];
-  subProjects = Array.isArray(data.subProjects) ? data.subProjects : [];
-  crews = Array.isArray(data.crews) ? data.crews : [];
-  workers = Array.isArray(data.workers) ? data.workers : [];
-  toolboxRecords = Array.isArray(data.toolboxRecords) ? data.toolboxRecords : [];
-  workCardEntries = Array.isArray(data.workCardEntries) ? data.workCardEntries : [];
-  company = data.company || {name:'', license:'', logoDataUrl:''};
-  projects.forEach(p=>{
-    if(!Array.isArray(p.managerHistory)){
-      p.managerHistory = p.manager ? [{manager:p.manager, from:'0001-01-01'}] : [];
-    }
-    if(typeof p.nextSerial !== 'number') p.nextSerial = 1;
-  });
-  workers.forEach(w=>{
-    if(!Array.isArray(w.crewHistory)){
-      w.crewHistory = w.crewId ? [{crewId:w.crewId, from:'0001-01-01'}] : [];
-    }
-  });
-  projects.forEach(p=>{
-    const unnumbered = logs.filter(l=>l.projectId===p.id && !l.serialNumber);
-    if(unnumbered.length===0) return;
-    unnumbered.sort((a,b)=>a.date.localeCompare(b.date));
-    unnumbered.forEach(l=>{ l.serialNumber = p.nextSerial; p.nextSerial += 1; });
-  });
+  applyFullData(data);
   saveAll();
-  toast('ההחלפה הושלמה בהצלחה');
+  toast('ההחלפה הושלמה בהצלחה - נשמר ב-Drive');
 }
 
 /* Adds anything from an imported backup that doesn't already exist locally,
@@ -4233,9 +4334,94 @@ function restoreDataMerge(data){
   toast(summary);
 }
 
-/* ===================== Init ===================== */
-renderNav();
-render();
+/* ===================== Google Sign-In + Drive bootstrap ===================== */
+const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
+const DRIVE_FILE_NAME = 'יומן-עבודה-נתונים.json';
+let accessToken = null;
+let tokenClient = null;
+let driveFileId = null;
+let driveFileModifiedTime = null;
+
+function gateStatus(text){
+  const el = document.getElementById('gateStatus');
+  if(el) el.textContent = text;
+}
+
+window.addEventListener('load', ()=>{
+  if(typeof google === 'undefined' || !google.accounts){
+    gateStatus('שגיאה: ספריית ההתחברות של Google לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.');
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: DRIVE_CLIENT_ID,
+    scope: DRIVE_SCOPES,
+    callback: onDriveSignIn
+  });
+  document.getElementById('gateSignInBtn').onclick = ()=>{
+    gateStatus('פותח חלון התחברות של Google...');
+    tokenClient.requestAccessToken({prompt:'consent'});
+  };
+});
+
+async function onDriveSignIn(resp){
+  if(resp.error){
+    gateStatus('שגיאה בהתחברות: ' + resp.error + (resp.error_description ? (' - ' + resp.error_description) : ''));
+    return;
+  }
+  accessToken = resp.access_token;
+  gateStatus('טוען נתונים מ-Drive...');
+  try{
+    await loadOrCreateDriveFile();
+    document.getElementById('signInGate').style.display = 'none';
+    document.querySelector('header').style.visibility = 'visible';
+    renderNav();
+    render();
+  }catch(e){
+    gateStatus('שגיאה בטעינת הנתונים מ-Drive: ' + e.message);
+  }
+}
+
+/* Finds the single shared data file this app created earlier (drive.file scope only ever sees
+   files this app itself created/opened, so a plain name search is safe and can't collide with
+   an unrelated file of the same name elsewhere in the user's Drive). First-ever sign-in for a
+   brand-new Drive (nothing created yet) seeds an empty one instead of failing. */
+async function loadOrCreateDriveFile(){
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`, {
+    headers:{ Authorization:'Bearer '+accessToken }
+  });
+  const listJson = await listRes.json();
+  if(!listRes.ok) throw new Error(listJson.error ? listJson.error.message : 'שגיאה בחיפוש הקובץ ב-Drive');
+
+  if(listJson.files && listJson.files.length>0){
+    driveFileId = listJson.files[0].id;
+    driveFileModifiedTime = listJson.files[0].modifiedTime;
+    const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
+      headers:{ Authorization:'Bearer '+accessToken }
+    });
+    if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
+    const data = await contentRes.json();
+    applyFullData(data);
+  } else {
+    applyFullData({});
+    const metadata = { name: DRIVE_FILE_NAME, mimeType:'application/json' };
+    const boundary = 'yoman_avoda_boundary_' + Date.now();
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(buildFullPayload())}\r\n` +
+      `--${boundary}--`;
+    const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
+      method:'POST',
+      headers:{ Authorization:'Bearer '+accessToken, 'Content-Type':'multipart/related; boundary='+boundary },
+      body
+    });
+    const createJson = await createRes.json();
+    if(!createRes.ok) throw new Error(createJson.error ? createJson.error.message : 'שגיאה ביצירת הקובץ ב-Drive');
+    driveFileId = createJson.id;
+    driveFileModifiedTime = createJson.modifiedTime;
+  }
+}
 </script>
 </body>
 </html>
