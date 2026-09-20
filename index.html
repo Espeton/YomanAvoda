@@ -4360,7 +4360,12 @@ window.addEventListener('load', ()=>{
   });
   document.getElementById('gateSignInBtn').onclick = ()=>{
     gateStatus('פותח חלון התחברות של Google...');
-    tokenClient.requestAccessToken({prompt:'consent'});
+    // prompt:'' (instead of 'consent') asks Google to skip the account-chooser/consent/
+    // "app not verified" screens when they're not actually needed - i.e. every time after
+    // the first, since the approval from the first sign-in is already on file. The first-ever
+    // sign-in for a given Google account still shows the full screens regardless (Google
+    // requires that), this only stops it from re-showing them on every later page load.
+    tokenClient.requestAccessToken({prompt:''});
   };
 });
 
