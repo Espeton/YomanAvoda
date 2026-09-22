@@ -159,7 +159,13 @@
   .tbx-matrix thead .tbx-id-cell, .tbx-matrix thead .tbx-name-cell, .tbx-matrix thead .tbx-serial-cell{z-index:4;}
   .tbx-matrix .tbx-group-row td{background:var(--navy); color:#fff; font-weight:bold; text-align:right; padding:5px 8px; position:static;}
   .tbx-matrix .tbx-cell input{width:13px; height:13px; cursor:pointer; margin:0;}
+  .tbx-matrix .tbx-cell input:disabled{cursor:not-allowed; opacity:0.55;}
   .tbx-matrix .tbx-cell-na{color:#C7CDD6; background:#FAFAFB;}
+  /* שבת - לא עובדים, אז כל התא של יום שבת (כותרת + כל השורות באותה עמודה) מקבל צביעה כחולה
+     קלה, כדי שהעמודה תבלוט חזותית כ"יום לא-עבודה" בלי לגעת בלוגיקת הנוכחות עצמה. */
+  .tbx-matrix thead th.tbx-saturday{background:#BFDBFE !important;}
+  .tbx-matrix .tbx-cell.tbx-saturday{background:#EFF6FF;}
+  .tbx-matrix .tbx-crew-day-total.tbx-saturday, .tbx-matrix .tbx-day-footer.tbx-saturday{background:#DBEAFE;}
   .tbx-matrix .tbx-total-cell{font-weight:bold; background:#FAFBFC; width:36px;}
   .tbx-matrix .tbx-crew-subtotal-row td{background:#EFF6FF; font-weight:bold; color:var(--navy);}
   .tbx-matrix tfoot td{background:#F0F4F8; font-weight:bold;}
@@ -300,6 +306,21 @@
     .tbx-matrix-wrap{max-height:none !important; overflow:visible !important;}
     .wc-onscreen-only{display:none !important;}
     .wc-print-wrap{display:flex !important; gap:16px; align-items:flex-start;}
+    /* Toolbox matrix report (8.8): removing the vertical clip (above) wasn't enough on its own -
+       the table itself is simply too WIDE to fit a portrait page once there are ~30 day columns
+       plus מס"ד/ת.ז/שם/סה"כ (fixed-width columns add up to ~970px, wider than a portrait page's
+       printable area), so days on the right/left were getting cut off outright rather than
+       wrapping or shrinking. Fixed with a named landscape page (roughly 40% more width) applied
+       only to the results table, plus a bit of extra column tightening as a safety margin -
+       the generic `table th,td` print padding below is actually WIDER than this table's own
+       on-screen padding, so without this override it would eat into the little room there is. */
+    @page tbxLandscape{ size: landscape; margin: 10mm; }
+    #r8_table{ page: tbxLandscape; }
+    #r8_table .tbx-matrix{font-size:10px !important;}
+    #r8_table .tbx-matrix th, #r8_table .tbx-matrix td{padding:1px 2px !important;}
+    #r8_table .tbx-matrix .tbx-day-header, #r8_table .tbx-matrix .tbx-cell, #r8_table .tbx-matrix .tbx-crew-day-total, #r8_table .tbx-matrix .tbx-day-footer{width:19px !important;}
+    #r8_table .tbx-matrix .tbx-id-cell{width:60px !important; min-width:60px !important;}
+    #r8_table .tbx-matrix .tbx-name-cell{width:110px !important; min-width:110px !important;}
   }
   /* Google Sign-In gate (Drive-backed version - see section 11 in the spec doc) */
   #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
@@ -2798,6 +2819,9 @@ function renderToolboxMatrix(){
     body.innerHTML = '<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים פעילים משויכים לחודש שנבחר. אפשר להגדיר בטאב "קבלני משנה".</div>';
     return;
   }
+  // לא עובדים בשבת - עמודת השבת מסומנת בצבע כחול (ראו .tbx-saturday ב-CSS) בכל מקום
+  // בטבלה (כותרת/תאים/סיכומים), רק ויזואלית - לא נוגע בלוגיקת הנוכחות עצמה.
+  const saturdays = new Set(days.filter(d=> new Date(toolboxMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6));
 
   const rowEntries = []; // [{workerId, crewId}] - one per rendered worker row, for totals recompute
   let rowsHtml = '';
@@ -2806,17 +2830,19 @@ function renderToolboxMatrix(){
       rowsHtml += `<tr class="tbx-group-row" data-crew-block="${cr.id}"><td colspan="${numDays+4}">${esc(c.name)} - ${esc(cr.name)}${cr.description?(' ('+esc(cr.description)+')'):''}</td></tr>`;
       rows.forEach(({worker:w, validDays}, idx)=>{
         rowEntries.push({workerId:w.id, crewId:cr.id});
+        const isInactive = w.active===false;
         let cells = '';
         days.forEach(d=>{
+          const satCls = saturdays.has(d) ? ' tbx-saturday' : '';
           if(validDays.has(d)){
-            cells += `<td class="tbx-cell"><input type="checkbox" class="tbx-cell-cb" data-worker-id="${w.id}" data-crew-id="${cr.id}" data-day="${d}" ${presenceByDay[d].has(w.id)?'checked':''}></td>`;
+            cells += `<td class="tbx-cell${satCls}"><input type="checkbox" class="tbx-cell-cb" data-worker-id="${w.id}" data-crew-id="${cr.id}" data-day="${d}" ${presenceByDay[d].has(w.id)?'checked':''} ${isInactive?'disabled title="הפועל לא פעיל - לא ניתן לעדכן נוכחות. יש להחזיר אותו לפעיל בטאב \'קבלני משנה\' כדי לערוך."':''}></td>`;
           } else {
-            cells += `<td class="tbx-cell tbx-cell-na" title="הפועל לא היה משויך לקבוצה זו בתאריך זה">—</td>`;
+            cells += `<td class="tbx-cell tbx-cell-na${satCls}" title="הפועל לא היה משויך לקבוצה זו בתאריך זה">—</td>`;
           }
         });
-        rowsHtml += `<tr data-crew-block="${cr.id}" data-worker-idnum="${esc(w.idNumber||'')}"><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell" data-worker-total="${w.id}__${cr.id}">0</td></tr>`;
+        rowsHtml += `<tr data-crew-block="${cr.id}" data-worker-idnum="${esc(w.idNumber||'')}"><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}${isInactive?' <span class="badge gray" style="font-size:9px;">לא פעיל</span>':''}</td>${cells}<td class="tbx-total-cell" data-worker-total="${w.id}__${cr.id}">0</td></tr>`;
       });
-      const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total" data-crew-id="${cr.id}" data-day="${d}">0</td>`).join('');
+      const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total${saturdays.has(d)?' tbx-saturday':''}" data-crew-id="${cr.id}" data-day="${d}">0</td>`).join('');
       // Separate serial/id/name cells (not one colspan cell) - a colspan cell sized/positioned
       // by the single-column sticky CSS rules visually overlapped the first few day columns.
       rowsHtml += `<tr class="tbx-crew-subtotal-row" data-crew-block="${cr.id}"><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ קבוצה</td>${crewDayCells}<td class="tbx-crew-grand-total" data-crew-id="${cr.id}">0</td></tr>`;
@@ -2825,9 +2851,9 @@ function renderToolboxMatrix(){
 
   const dayHeaderCells = days.map(d=>{
     const dow = HEBREW_WEEKDAY_SHORT[new Date(toolboxMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
-    return `<th class="tbx-day-header"><div>${d}</div><div class="tbx-dow">${dow}</div></th>`;
+    return `<th class="tbx-day-header${saturdays.has(d)?' tbx-saturday':''}"><div>${d}</div><div class="tbx-dow">${dow}</div></th>`;
   }).join('');
-  const footerDayCells = days.map(d=>`<td class="tbx-day-footer" data-day-total="${d}">0</td>`).join('');
+  const footerDayCells = days.map(d=>`<td class="tbx-day-footer${saturdays.has(d)?' tbx-saturday':''}" data-day-total="${d}">0</td>`).join('');
 
   body.innerHTML = `
     <div class="tbx-matrix-wrap">
@@ -2838,7 +2864,7 @@ function renderToolboxMatrix(){
       </table>
     </div>
     <div class="hint" id="tbx_saveStatus" style="margin-top:8px;"></div>
-    <div class="note" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו), ולכן אי אפשר לסמן שם נוכחות.</div>
+    <div class="note" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו), ולכן אי אפשר לסמן שם נוכחות. פועל המסומן "לא פעיל" ממשיך להופיע (אם נכח בחודש זה), אך תיבות הסימון שלו נעולות - לא ניתן לעדכן את נוכחותו כל עוד הוא לא פעיל.</div>
     <div class="empty" id="tbx_search_empty" style="margin-top:8px; display:none;">לא נמצאו פועלים עם ת.ז / דרכון התואם לחיפוש.</div>
   `;
 
@@ -3269,6 +3295,116 @@ function renderSearch(main){
     });
     updateBatchPrintBar();
   };
+
+  renderBulkAttendanceTool(main);
+}
+
+/* ---- Retroactively adding a forgotten contractor's attendance across a date range (section 7.1) -
+   e.g. a crane operator or occasional worker who "didn't seem important enough" to log at the
+   time, then turned out to matter after all. Only ever touches EXISTING logs (never creates a
+   log for a missing date - that would silently create a mostly-empty log with no weather/content,
+   which is a bigger decision than "add one contractor"), and per explicit user request, silently
+   skips any date whose log already has an attendance row for that contractor - never duplicates
+   or overwrites. */
+function renderBulkAttendanceTool(main){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <h2>תיקון תאריכים לקבלן ⭐</h2>
+    <div class="note">לשימוש כשמגלים שקבלן (למשל מנופאי או עובד מזדמן) לא נרשם בנוכחות היומן היומי במשך כמה ימים ברצף. מוסיף שורת נוכחות + מספר פועלים לכל יומן ש<b>כבר קיים</b> בטווח - לא יוצר יומנים חדשים, ומדלג אוטומטית על תאריך שבו הקבלן כבר מופיע בנוכחות (לא כותב פעמיים).</div>
+    <div class="grid grid-4">
+      <div class="field"><label>קבלן משנה *</label>
+        <select id="ba_contractor" class="searchable"><option value="">בחר קבלן...</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>פרויקט *</label>
+        <select id="ba_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>תת-פרויקט</label><select id="ba_subproject"><option value="">ללא תת-פרויקט</option></select></div>
+      <div class="field"><label>מספר פועלים (ברירת מחדל לכל הימים)</label><input type="number" id="ba_defaultWorkers" min="0" step="1" value="1"></div>
+      <div class="field"><label>מתאריך *</label><input type="date" id="ba_from"></div>
+      <div class="field"><label>עד תאריך *</label><input type="date" id="ba_to"></div>
+    </div>
+    <button class="btn secondary" id="ba_load">טען תאריכים</button>
+    <div id="ba_rows" style="margin-top:10px;"></div>
+  `;
+  main.appendChild(card);
+
+  const projectEl = document.getElementById('ba_project');
+  const subProjectEl = document.getElementById('ba_subproject');
+  projectEl.onchange = ()=>{
+    const opts = sortSubProjectsAlpha(subProjects.filter(sp=>sp.projectId===projectEl.value));
+    subProjectEl.innerHTML = '<option value="">ללא תת-פרויקט</option>' + opts.map(sp=>`<option value="${sp.id}">${esc(sp.name)}</option>`).join('');
+  };
+
+  document.getElementById('ba_load').onclick = ()=>{
+    const contractorId = document.getElementById('ba_contractor').value;
+    const projectId = projectEl.value;
+    const subProjectId = subProjectEl.value;
+    const from = document.getElementById('ba_from').value;
+    const to = document.getElementById('ba_to').value;
+    const defaultWorkers = document.getElementById('ba_defaultWorkers').value;
+    const rowsBox = document.getElementById('ba_rows');
+    if(!contractorId || !projectId || !from || !to){ toast('נא למלא קבלן, פרויקט, ומתאריך/עד תאריך'); return; }
+    if(from > to){ toast('"מתאריך" צריך להיות לפני "עד תאריך"'); return; }
+    const dates = datesInRange(from, to);
+    if(dates.length > 366){ toast('הטווח גדול מדי (מעל שנה) - נא לצמצם'); return; }
+
+    const rowsHtml = dates.map(date=>{
+      const dow = HEBREW_WEEKDAY_SHORT[new Date(date+'T00:00:00').getDay()];
+      const log = logs.find(l=> l.projectId===projectId && (l.subProjectId||'')===(subProjectId||'') && l.date===date && !l.deleted);
+      let statusHtml, inputHtml;
+      if(!log){
+        statusHtml = '<span class="badge gray">אין יומן לתאריך זה</span>';
+        inputHtml = '—';
+      } else if((log.attendance||[]).some(a=>a.contractorId===contractorId)){
+        statusHtml = '<span class="badge gray">הקבלן כבר רשום - דולג</span>';
+        inputHtml = '—';
+      } else {
+        statusHtml = '<span class="badge ok">יומן קיים - מוכן להוספה</span>';
+        inputHtml = `<input type="number" class="ba_workers" data-log-id="${log.id}" min="0" step="1" value="${esc(defaultWorkers)}" style="width:80px;">`;
+      }
+      return `<tr><td>${fmtDate(date)}</td><td>${dow}</td><td>${statusHtml}</td><td>${inputHtml}</td></tr>`;
+    }).join('');
+
+    rowsBox.innerHTML = `
+      <table class="log-table">
+        <thead><tr><th>תאריך</th><th>יום</th><th>סטטוס</th><th>מספר פועלים</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <button class="btn" id="ba_apply" style="margin-top:10px;">הוסף נוכחות לכל התאריכים המוכנים</button>
+    `;
+
+    document.getElementById('ba_apply').onclick = ()=>{
+      let added = 0;
+      rowsBox.querySelectorAll('.ba_workers').forEach(input=>{
+        const logId = input.dataset.logId;
+        const log = logs.find(l=>l.id===logId);
+        if(!log) return;
+        // Re-check at write time (not just at load time) - the same log could have been edited
+        // (e.g. in another tab) since the list was loaded, and this must never add a duplicate.
+        if((log.attendance||[]).some(a=>a.contractorId===contractorId)) return;
+        log.attendance = log.attendance || [];
+        log.attendance.push({contractorId, workers: input.value, crewId:''});
+        added++;
+      });
+      if(added>0) saveAll();
+      toast(added>0 ? `נוספה נוכחות ל-${added} יומנים` : 'לא נוספה נוכחות - כל התאריכים כבר טופלו');
+      document.getElementById('ba_load').click(); // refresh the list so applied rows show as "already registered"
+    };
+  };
+}
+function datesInRange(from, to){
+  // Built from local Y/M/D getters (not toISOString, which converts to UTC and would shift
+  // every date back by one in any timezone ahead of UTC, e.g. Israel - verified this the hard
+  // way while testing).
+  const out = [];
+  const d = new Date(from+'T00:00:00');
+  const end = new Date(to+'T00:00:00');
+  while(d <= end){
+    out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+    d.setDate(d.getDate()+1);
+  }
+  return out;
 }
 
 /* ===================== REQ-011/012: Reports ===================== */
@@ -4027,10 +4163,11 @@ function renderToolboxMatrixReport(main){
 
     const {days, presenceByDay, contractorBlocks} = buildToolboxMatrixData(projectId, month, contractorId, crewId);
     if(contractorBlocks.length===0){ box.innerHTML = '<div class="empty">אין נתוני נוכחות תואמים לסינון שנבחר.</div>'; return; }
+    const saturdays = new Set(days.filter(d=> new Date(month+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6));
 
     const dayHeaderCells = days.map(d=>{
       const dow = HEBREW_WEEKDAY_SHORT[new Date(month+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
-      return `<th class="tbx-day-header"><div>${d}</div><div class="tbx-dow">${dow}</div></th>`;
+      return `<th class="tbx-day-header${saturdays.has(d)?' tbx-saturday':''}"><div>${d}</div><div class="tbx-dow">${dow}</div></th>`;
     }).join('');
 
     const dayTotals = {}; days.forEach(d=> dayTotals[d]=0);
@@ -4045,22 +4182,23 @@ function renderToolboxMatrixReport(main){
           let rowTotal = 0;
           let cells = '';
           days.forEach(d=>{
+            const satCls = saturdays.has(d) ? ' tbx-saturday' : '';
             if(validDays.has(d)){
               const present = presenceByDay[d].has(w.id);
               if(present){ rowTotal++; dayTotals[d]++; crewDayTotals[d]++; }
-              cells += `<td class="tbx-cell">${present?'✓':''}</td>`;
+              cells += `<td class="tbx-cell${satCls}">${present?'✓':''}</td>`;
             } else {
-              cells += `<td class="tbx-cell tbx-cell-na">—</td>`;
+              cells += `<td class="tbx-cell tbx-cell-na${satCls}">—</td>`;
             }
           });
           grand += rowTotal; crewGrand += rowTotal;
           rowsHtml += `<tr><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell">${rowTotal}</td></tr>`;
         });
-        const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total">${crewDayTotals[d]}</td>`).join('');
+        const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total${saturdays.has(d)?' tbx-saturday':''}">${crewDayTotals[d]}</td>`).join('');
         rowsHtml += `<tr class="tbx-crew-subtotal-row"><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ קבוצה</td>${crewDayCells}<td class="tbx-crew-grand-total">${crewGrand}</td></tr>`;
       });
     });
-    const footerDayCells = days.map(d=>`<td class="tbx-day-footer">${dayTotals[d]}</td>`).join('');
+    const footerDayCells = days.map(d=>`<td class="tbx-day-footer${saturdays.has(d)?' tbx-saturday':''}">${dayTotals[d]}</td>`).join('');
 
     box.innerHTML = `
       <div class="tbx-matrix-wrap">
