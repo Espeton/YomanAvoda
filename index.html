@@ -326,6 +326,13 @@
   #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
   #signInGate .card{max-width:420px; width:90%;}
   #signInGate .hint{margin-top:10px; min-height:16px;}
+  /* "My project" bar (section 11.1) - a PERSONAL default project, remembered per browser/device
+     (localStorage, never synced to Drive) - not the shared project the team sees, just which one
+     this person's own "יומן יומי"/"טולבוקס" start on by default, so a shared Drive file with
+     several projects doesn't mean everyone keeps landing on whichever project someone else last
+     marked as the shared default. */
+  .myproject-bar{display:none; align-items:center; gap:8px; padding:7px 20px; background:#EFF6FF; border-bottom:1px solid #BFDBFE; font-size:12.5px; color:#1E40AF; flex-wrap:wrap;}
+  .myproject-bar select{font-size:12.5px; padding:3px 6px;}
 </style>
 </head>
 <body>
@@ -348,6 +355,7 @@
 </header>
 
 <nav id="tabsNav"></nav>
+<div id="myProjectBar" class="myproject-bar"></div>
 
 <main id="app"></main>
 
@@ -884,6 +892,30 @@ function renderNav(){
   const homeBtn = document.getElementById('homeBtn');
   homeBtn.style.display = activeTab==='home' ? 'none' : 'inline-block';
   homeBtn.onclick = ()=> goToTab('home');
+  renderMyProjectBar();
+}
+/* "My project" bar (section 11.1) - rebuilt every time renderNav() runs (i.e. on every tab
+   switch and after every data change that re-renders), so the project list it offers is always
+   current. Purely a personal preference (see getMyDefaultProjectId) - picking one here doesn't
+   touch anything currently open, it only affects what a FRESH "יומן יומי"/"טולבוקס" starts on
+   next time. */
+function renderMyProjectBar(){
+  const bar = document.getElementById('myProjectBar');
+  if(!bar) return;
+  if(projects.length===0){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  const myId = getMyDefaultProjectId();
+  bar.innerHTML = `
+    <span>📌 הפרויקט שלי (ברירת מחדל אישית, בדפדפן הזה בלבד):</span>
+    <select id="myProjectSelect">
+      <option value="">ללא (לפי ברירת המחדל הכללית)</option>
+      ${projects.map(p=>`<option value="${p.id}" ${myId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
+    </select>
+  `;
+  document.getElementById('myProjectSelect').onchange = e=>{
+    setMyDefaultProjectId(e.target.value);
+    toast(e.target.value ? 'הוגדר כפרויקט שלך - ישמש כברירת מחדל ביומן היומי/בטולבוקס בדפדפן הזה מכאן והלאה' : 'ברירת המחדל האישית בוטלה');
+  };
 }
 function render(){
   const main = document.getElementById('app');
@@ -1630,7 +1662,20 @@ function renderLocations(main){
 let draft = null; // current in-progress log object
 let autosaveTimer = null;
 
+/* Personal default project (section 11.1) - lives in this browser's localStorage only, never
+   in the shared Drive file, so it's genuinely per-person/per-device: everyone still sees every
+   project (that was the explicit decision - "everyone in the same company sees everyone"), but
+   each person's own "יומן יומי"/"טולבוקס" starts on THEIR usual project, not whichever one the
+   shared "הגדר כברירת מחדל" flag on the project itself happens to be on. */
+function getMyDefaultProjectId(){
+  try{ return localStorage.getItem('yoman_myDefaultProjectId') || ''; }catch(e){ return ''; }
+}
+function setMyDefaultProjectId(id){
+  try{ localStorage.setItem('yoman_myDefaultProjectId', id||''); }catch(e){}
+}
 function getDefaultProject(){
+  const myId = getMyDefaultProjectId();
+  if(myId){ const mine = projects.find(p=>p.id===myId); if(mine) return mine; }
   return projects.find(p=>p.isDefault) || null;
 }
 function getDefaultSubProject(projectId){
@@ -2638,7 +2683,13 @@ function compressImage(file, maxDim, quality){
    one day at a time - per user request, mirroring the layout of the נוכחות.xlsx reference
    file - but every checkbox toggle still just writes/reads the same per-day records, created
    lazily (only for days that actually get a checkmark, not the whole month upfront). */
-let toolboxProjectId = (getDefaultProject() ? getDefaultProject().id : '');
+/* Was `(getDefaultProject() ? getDefaultProject().id : '')` evaluated right here - worked fine
+   in the old localStorage version (projects[] was already populated synchronously by this point),
+   but in the Drive version this line runs at page-load time, before sign-in/the Drive fetch has
+   populated projects[] at all - so it always evaluated to '', silently disabling the toolbox's
+   default-project preselection. Now starts empty and applies the default lazily on first render
+   (see renderToolbox below), once there's actually data to pick a default from. */
+let toolboxProjectId = '';
 let toolboxMonth = todayStr().slice(0,7); // 'YYYY-MM'
 let toolboxSearchQuery = ''; // free-text filter on ת.ז/דרכון (substring match), kept across re-renders
 const HEBREW_WEEKDAY_SHORT = ['א','ב','ג','ד','ה','ו','ש']; // Date.getDay(): 0=Sunday..6=Saturday
@@ -2648,6 +2699,7 @@ function toolboxDaysInMonth(yyyyMm){
 }
 function toolboxDateStr(day){ return `${toolboxMonth}-${String(day).padStart(2,'0')}`; }
 function renderToolbox(main){
+  if(!toolboxProjectId){ const dp = getDefaultProject(); if(dp) toolboxProjectId = dp.id; }
   const card = document.createElement('div');
   card.className = 'card';
   const printableContractors = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).length>0));
