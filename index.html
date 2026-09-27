@@ -26,10 +26,13 @@
     direction:rtl;
     min-height:100vh;
   }
+  /* The title bar + tab bar stay frozen at the top while the page scrolls (--topbar-h, set from JS,
+     is its measured height - used to keep other sticky bars from sliding underneath it). */
+  #topbar{position:sticky; top:0; z-index:100;}
   header{
     background:linear-gradient(135deg, var(--navy-dark), var(--navy));
     color:#fff;
-    padding:18px 24px;
+    padding:12px 24px;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -76,13 +79,29 @@
   }
   .card h2{margin-top:0; font-size:16px; color:var(--navy-dark); border-bottom:1px solid var(--border); padding-bottom:10px;}
   .card h3{font-size:14px; color:var(--navy); margin-bottom:8px;}
+  /* Compact card variant (projects screen): tighter rows/gaps so the project form + list and the
+     sub-project form + list fit on one screen together. */
+  .card.compact{padding:14px 16px; margin-bottom:12px;}
+  .card.compact h2{padding-bottom:6px; margin-bottom:8px;}
+  .card.compact .grid{gap:6px 10px; margin-bottom:6px;}
+  .card.compact .field{margin-bottom:0;}
+  .card.compact label{margin-bottom:2px;}
+  .card.compact .note{padding:5px 10px; margin-bottom:6px; font-size:11.5px;}
+  .card.compact .row-actions{margin-top:6px;}
+  .card.compact .entity-list li{padding:5px 10px; margin-bottom:4px;}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
   .grid-3{grid-template-columns:1fr 1fr 1fr;}
   .grid-4{grid-template-columns:1fr 1fr 1fr 1fr;}
   .readonly-field{padding:8px 10px; font-size:13.5px; color:var(--text); min-height:37px; display:flex; align-items:center;}
   .framed-box{border:1px solid var(--border); border-radius:6px; padding:10px; background:#FAFBFC;}
   .framed-box textarea{border:none; padding:0; background:transparent;}
-  @media (max-width:640px){ .grid, .grid-3, .grid-4{grid-template-columns:1fr;} }
+  /* Form grids whose last column holds the save/cancel buttons (so the buttons share a row with the fields) */
+  .grid-act3{grid-template-columns:1fr 1fr auto;}
+  .grid-act4{grid-template-columns:1fr 1fr 1fr auto;}
+  .grid-act3 .form-actions, .grid-act4 .form-actions{display:flex; gap:8px; align-items:flex-end;}
+  .grid-5{grid-template-columns:repeat(5, minmax(0,1fr));}
+  .grid-6{grid-template-columns:repeat(6, minmax(0,1fr));}
+  @media (max-width:640px){ .grid, .grid-3, .grid-4, .grid-5, .grid-6, .grid-act3, .grid-act4{grid-template-columns:1fr;} }
   label{display:block; font-size:12.5px; color:var(--muted); margin-bottom:4px; font-weight:bold;}
   input, select, textarea{
     width:100%;
@@ -148,6 +167,20 @@
   .crew-checklist-item{display:flex; align-items:center; gap:5px; font-size:12.5px; padding:2px 0; cursor:pointer;}
   .crew-checklist-item input{width:auto;}
   .tbx-matrix-wrap{overflow-x:auto; max-width:100%; max-height:70vh; overflow-y:auto; border:1px solid var(--border); border-radius:8px;}
+  /* Interactive toolbox matrix only (#tbx_body): the day-header row must stay visible no matter how
+     far down the page you scroll, not just while scrolling inside its own box. Instead of an inner
+     max-height scrollbox (whose own sticky header disappears once the box itself scrolls out from
+     under the frozen #topbar), the matrix flows in the page and the header sticks to the page,
+     right below the frozen top bar. */
+  /* overflow-x:auto on this box (inherited from .tbx-matrix-wrap) would itself become the sticky
+     positioning reference for its children on BOTH axes - since this box's own scroll position
+     never moves (only the page around it scrolls), that would silently defeat the header's
+     vertical stickiness relative to the page. So overflow is fully opened up here; a matrix wider
+     than the viewport (main is already full-width in this tab) scrolls the page horizontally
+     instead of scrolling inside a local box - an acceptable trade for the header never moving. */
+  #tbx_body .tbx-matrix-wrap{max-height:none; overflow:visible;}
+  #tbx_body .tbx-matrix thead th{top: var(--topbar-h, 0px); z-index:90;}
+  #tbx_body .tbx-matrix thead .tbx-id-cell, #tbx_body .tbx-matrix thead .tbx-name-cell, #tbx_body .tbx-matrix thead .tbx-serial-cell{z-index:91;}
   .tbx-matrix{border-collapse:collapse; font-size:11px; white-space:nowrap; table-layout:fixed;}
   .tbx-matrix th, .tbx-matrix td{border:1px solid var(--border); padding:2px 3px; text-align:center;}
   .tbx-matrix thead th{background:#F0F4F8; color:var(--navy-dark); font-size:10.5px; position:sticky; top:0; z-index:3;}
@@ -175,6 +208,29 @@
     padding:9px 10px; border:1px solid var(--border); border-radius:6px; margin-bottom:6px; font-size:13.5px;
   }
   .entity-list li .meta{color:var(--muted); font-size:12px;}
+  /* Long management lists (registered contractors, workers in a crew) scroll inside their own
+     box instead of pushing the next section far down the page. */
+  .entity-list.scroll-list{max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; padding:6px; background:#FAFBFC;}
+  .entity-list.scroll-list li{background:#fff;}
+  /* "Fixed form, scrolling list" card (contractors screen): the card is as tall as what's left of the
+     window under the frozen top bar, the entry form keeps its natural height, and the list under it
+     takes ALL the remaining height and scrolls inside - so the page itself never scrolls and the
+     form stays put. ~150px = the screen's back-bar + page margins/padding around the card. */
+  .card.fill-screen{display:flex; flex-direction:column; height:calc(100vh - var(--topbar-h, 0px) - 150px); min-height:320px; margin-bottom:0;}
+  .card.fill-screen .entity-list.scroll-list{flex:1 1 0; min-height:0; max-height:none;}
+  /* Workers screen: the whole entry area is the frozen part; if it ever gets tall (edit mode with the
+     crew-transfer/history blocks, staged photos) it scrolls inside itself instead of squeezing the list away. */
+  .card.fill-screen .form-scroll{flex:0 0 auto; max-height:60%; overflow-y:auto;}
+  .form-scroll .photo-thumb{width:64px;}
+  .form-scroll .photo-thumb img{width:64px; height:44px;}
+  @media (max-width:640px){ .card.fill-screen{height:auto;} .card.fill-screen .entity-list.scroll-list{max-height:320px;} }
+  /* Printable worker card with document photos (section 4.1) */
+  .worker-print-details td{padding:4px 8px;}
+  .worker-print-details td:first-child{width:28%; font-weight:bold; background:#FAFBFC;}
+  .worker-doc-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;}
+  .worker-doc-grid figure{margin:0; border:1px solid var(--border); border-radius:6px; padding:6px; break-inside:avoid; page-break-inside:avoid;}
+  .worker-doc-grid figcaption{font-weight:bold; font-size:12.5px; margin-bottom:4px;}
+  .worker-doc-grid img{width:100%; max-height:9.5cm; object-fit:contain; display:block;}
   .subrow{
     display:flex; gap:8px; align-items:flex-end; margin-bottom:8px; flex-wrap:wrap;
     border:1px dashed var(--border); padding:10px; border-radius:6px; background:#FAFBFC;
@@ -304,6 +360,8 @@
        must show its full content when printed - overflow:auto + max-height would otherwise
        clip it to just the portion that happened to be visible on screen ("screenshot" effect). */
     .tbx-matrix-wrap{max-height:none !important; overflow:visible !important;}
+    .entity-list.scroll-list{max-height:none !important; overflow:visible !important;}
+    .card.fill-screen{height:auto !important;}
     .wc-onscreen-only{display:none !important;}
     .wc-print-wrap{display:flex !important; gap:16px; align-items:flex-start;}
     /* Toolbox matrix report (8.8): removing the vertical clip (above) wasn't enough on its own -
@@ -346,6 +404,7 @@
   </div>
 </div>
 
+<div id="topbar">
 <header style="visibility:hidden;">
   <div>
     <h1>יומן עבודה יומי — אתר בנייה</h1>
@@ -356,6 +415,7 @@
 
 <nav id="tabsNav"></nav>
 <div id="myProjectBar" class="myproject-bar"></div>
+</div>
 
 <main id="app"></main>
 
@@ -812,7 +872,7 @@ function renderBatchPrintView(main, logIds, includeCover){
 
   const backBar = document.createElement('div');
   backBar.className = 'no-print';
-  backBar.style.cssText = 'position:sticky; top:10px; z-index:999; display:flex; gap:8px; margin-bottom:12px;';
+  backBar.style.cssText = 'position:sticky; top:calc(var(--topbar-h, 0px) + 10px); z-index:99; display:flex; gap:8px; margin-bottom:12px;';
   backBar.innerHTML = `<button class="btn" id="batchPrintGo">הדפס עכשיו</button><button class="btn secondary" id="batchPrintBack">${returnLabel}</button>`;
   main.insertBefore(backBar, main.firstChild);
   document.getElementById('batchPrintGo').onclick = ()=> window.print();
@@ -854,6 +914,9 @@ let editingSubProjectId = null;
 let selectedSubProjectsProjectId = '';
 let editingCrewId = null;
 let selectedCrewsContractorId = '';
+let workerSearchQuery = ''; // free-text filter on the workers-in-this-crew list (name and/or ת.ז/דרכון)
+let contractorSearchQuery = ''; // free-text filter on the registered-contractors list (name or part of it)
+let contractorsView = 'menu'; // "קבלני משנה" tab: 'menu' (mini-dashboard) | 'contractors' | 'crews' | 'workers'
 let editingWorkerId = null;
 let selectedWorkersCrewId = '';
 /* Staged document-photo edits for the worker add/edit form (section 4.1) - like every other
@@ -881,6 +944,7 @@ function goToTab(tabId){
   editingSubProjectId = null;
   editingCrewId = null;
   editingWorkerId = null;
+  if(tabId==='contractors'){ contractorsView = 'menu'; contractorSearchQuery = ''; workerSearchQuery = ''; } // entering (or re-clicking) the tab always lands on its dashboard, with a clean search
   renderNav(); render();
 }
 function renderNav(){
@@ -892,6 +956,7 @@ function renderNav(){
   const homeBtn = document.getElementById('homeBtn');
   homeBtn.style.display = activeTab==='home' ? 'none' : 'inline-block';
   homeBtn.onclick = ()=> goToTab('home');
+  syncTopbarHeight();
   renderMyProjectBar();
 }
 /* "My project" bar (section 11.1) - rebuilt every time renderNav() runs (i.e. on every tab
@@ -917,6 +982,11 @@ function renderMyProjectBar(){
     toast(e.target.value ? 'הוגדר כפרויקט שלך - ישמש כברירת מחדל ביומן היומי/בטולבוקס בדפדפן הזה מכאן והלאה' : 'ברירת המחדל האישית בוטלה');
   };
 }
+function syncTopbarHeight(){
+  const tb = document.getElementById('topbar');
+  if(tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+}
+window.addEventListener('resize', syncTopbarHeight);
 function render(){
   const main = document.getElementById('app');
   main.innerHTML = '';
@@ -934,8 +1004,24 @@ function render(){
   // instead of the app's normal centered 1000px column, so it needs less horizontal
   // scrolling to see the whole table at once. Every other tab keeps the normal width.
   main.style.maxWidth = (activeTab==='toolbox') ? '100%' : '';
+  // "Fixed form + scrolling list" screens use every pixel down to the bottom of the window, with no page scroll
+  main.style.paddingBottom = main.querySelector('.card.fill-screen') ? '8px' : '';
+  fitFillScreenCards();
   initSearchableSelects(main);
 }
+// Stretches each .card.fill-screen from wherever it starts on the page down to the bottom edge of the window
+// (measured, not a hard-coded reserve), so its scrolling list gets the maximum height that still fits on screen.
+function fitFillScreenCards(){
+  const main = document.getElementById('app');
+  if(!main) return;
+  const small = window.matchMedia('(max-width:640px)').matches; // phone layout: normal flowing page instead
+  main.querySelectorAll('.card.fill-screen').forEach(card=>{
+    if(small){ card.style.height = ''; return; }
+    const top = card.getBoundingClientRect().top + window.scrollY;
+    card.style.height = Math.max(320, Math.floor(window.innerHeight - top - 10)) + 'px';
+  });
+}
+window.addEventListener('resize', fitFillScreenCards);
 
 /* ===================== Home screen (button-grid landing page) ===================== */
 function renderHome(main){
@@ -963,24 +1049,25 @@ function renderHome(main){
 function renderProjects(main){
   const editing = editingProjectId ? projects.find(p=>p.id===editingProjectId) : null;
   const card = document.createElement('div');
-  card.className='card';
+  card.className='card compact';
   card.innerHTML = `
     <h2>ניהול פרויקטים ${editing?'<span class="badge gray">עריכת פרויקט קיים</span>':''}</h2>
-    <div class="note">שינוי "מנהל עבודה" בפרויקט קיים נשמר כהיסטוריה - יומנים ישנים ימשיכו להציג את מנהל העבודה שהיה בתוקף בתאריך שלהם, גם אם התפקיד עבר למישהו אחר בהמשך.</div>
-    <div class="grid">
+    <div class="grid grid-act4">
       <div class="field"><label>שם הפרויקט *</label><input id="p_name" value="${editing?esc(editing.name):''}"></div>
       <div class="field"><label>מספר חוזה</label><input id="p_contract" value="${editing?esc(editing.contract||''):''}"></div>
-      <div class="field"><label>מיקום גיאוגרפי</label><input id="p_location" value="${editing?esc(editing.location||''):''}"></div>
       <div class="field"><label>מנהל עבודה / מנהל פרויקט *</label><input id="p_manager" value="${editing?esc(editing.manager||''):''}"></div>
+      <div></div>
       <div class="field"><label>יזם</label><input id="p_developer" value="${editing?esc(editing.developer||''):''}"></div>
       <div class="field"><label>קבלן ראשי</label><input id="p_maincontractor" value="${editing?esc(editing.mainContractor||''):''}"></div>
+      <div class="field"><label>מיקום גיאוגרפי</label><input id="p_location" value="${editing?esc(editing.location||''):''}"></div>
+      <div class="form-actions">
+        <button class="btn" id="p_save">${editing?'שמור שינויים':'הוסף פרויקט'}</button>
+        ${editing?'<button class="btn secondary" id="p_cancel">בטל עריכה</button>':''}
+      </div>
     </div>
-    <div class="row-actions">
-      <button class="btn" id="p_save">${editing?'שמור שינויים':'הוסף פרויקט'}</button>
-      ${editing?'<button class="btn secondary" id="p_cancel">בטל עריכה</button>':''}
-    </div>
-    <h3 style="margin-top:20px;">פרויקטים קיימים</h3>
-    <ul class="entity-list" id="p_list"></ul>
+    <h3 style="margin-top:8px;">פרויקטים קיימים</h3>
+    <ul class="entity-list scroll-list" id="p_list" style="max-height:125px;"></ul>
+    <div class="note" style="margin-top:8px;">שינוי "מנהל עבודה" בפרויקט קיים נשמר כהיסטוריה - יומנים ישנים ימשיכו להציג את מנהל העבודה שהיה בתוקף בתאריך שלהם, גם אם התפקיד עבר למישהו אחר בהמשך.</div>
   `;
   main.appendChild(card);
 
@@ -1055,7 +1142,7 @@ function renderProjects(main){
 /* ===================== NEW: Sub-projects (a project split into parts, each possibly with its own manager) ===================== */
 function renderSubProjects(main){
   const card = document.createElement('div');
-  card.className='card';
+  card.className='card compact';
   if(projects.length===0){
     return; // the "no projects yet" note is already shown by renderProjects itself
   }
@@ -1065,17 +1152,19 @@ function renderSubProjects(main){
   const editing = editingSubProjectId ? subProjects.find(sp=>sp.id===editingSubProjectId) : null;
   card.innerHTML = `
     <h2>ניהול תת-פרויקטים ${editing?'<span class="badge gray">עריכת תת-פרויקט קיים</span>':''}</h2>
-    <div class="note">אם הפרויקט מפוצל לחלקים שמנוהלים בנפרד (למשל על ידי מנהלי עבודה שונים), ניתן להגדיר כאן תת-פרויקטים ולשייך אליהם יומנים. יומנים שכבר קיימים, וכן יומנים חדשים ללא בחירה מפורשת, יישארו "ללא תת-פרויקט".</div>
-    <div class="field"><label>פרויקט</label>
-      <select id="sp_project" class="searchable">${projects.map(p=>`<option value="${p.id}" ${selectedSubProjectsProjectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    <div class="grid grid-act3">
+      <div class="field"><label>פרויקט</label>
+        <select id="sp_project" class="searchable">${projects.map(p=>`<option value="${p.id}" ${selectedSubProjectsProjectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>שם תת-הפרויקט *</label><input id="sp_name" placeholder="לדוגמה: אגף צפוני, שלב ב'" value="${editing?esc(editing.name):''}"></div>
+      <div class="form-actions">
+        <button class="btn" id="sp_save">${editing?'שמור שינויים':'הוסף תת-פרויקט'}</button>
+        ${editing?'<button class="btn secondary" id="sp_cancel">בטל עריכה</button>':''}
+      </div>
     </div>
-    <div class="field"><label>שם תת-הפרויקט *</label><input id="sp_name" placeholder="לדוגמה: אגף צפוני, שלב ב'" value="${editing?esc(editing.name):''}"></div>
-    <div class="row-actions">
-      <button class="btn" id="sp_save">${editing?'שמור שינויים':'הוסף תת-פרויקט'}</button>
-      ${editing?'<button class="btn secondary" id="sp_cancel">בטל עריכה</button>':''}
-    </div>
-    <h3 style="margin-top:20px;">תת-פרויקטים בפרויקט זה</h3>
-    <ul class="entity-list" id="sp_list"></ul>
+    <h3 style="margin-top:8px;">תת-פרויקטים בפרויקט זה</h3>
+    <ul class="entity-list scroll-list" id="sp_list" style="max-height:95px;"></ul>
+    <div class="note" style="margin-top:8px;">אם הפרויקט מפוצל לחלקים שמנוהלים בנפרד (למשל על ידי מנהלי עבודה שונים), ניתן להגדיר כאן תת-פרויקטים ולשייך אליהם יומנים. יומנים שכבר קיימים, וכן יומנים חדשים ללא בחירה מפורשת, יישארו "ללא תת-פרויקט".</div>
   `;
   main.appendChild(card);
 
@@ -1138,13 +1227,74 @@ function renderSubProjects(main){
 }
 
 /* ===================== REQ-002: Contractors ===================== */
+/* "קבלני משנה" tab = a mini-dashboard of three buttons, each opening its own screen (contractors /
+   work crews / workers in a crew), instead of one long page with all three stacked. `contractorsView`
+   says which screen is showing; goToTab resets it to the dashboard whenever the tab is entered. */
 function renderContractors(main){
+  if(contractorsView==='contractors'){ contractorsBackBar(main); renderContractorsScreen(main); }
+  else if(contractorsView==='crews'){ contractorsBackBar(main); renderCrews(main); }
+  else if(contractorsView==='workers'){ contractorsBackBar(main); renderWorkersScreen(main); }
+  else renderContractorsMenu(main);
+}
+function renderContractorsMenu(main){
+  const activeWorkers = workers.filter(w=>w.active!==false).length;
+  const tiles = [
+    {view:'contractors', icon:'👷', label:'ניהול קבלני משנה', desc:`${contractors.length} קבלנים רשומים`},
+    {view:'crews', icon:'👥', label:'ניהול קבוצות עבודה', desc:`${crews.length} קבוצות`},
+    {view:'workers', icon:'🪪', label:'ניהול פועלים בקבוצה', desc:`${workers.length} פועלים (${activeWorkers} פעילים)`}
+  ];
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <h2>קבלני משנה</h2>
+    <div class="home-grid">
+      ${tiles.map(t=>`
+        <button type="button" class="home-tile" data-view="${t.view}">
+          <span class="home-tile-icon">${t.icon}</span>
+          <span class="home-tile-label">${esc(t.label)}</span>
+          <span class="home-tile-desc">${esc(t.desc)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+  main.appendChild(card);
+  card.querySelectorAll('.home-tile').forEach(btn=>{
+    btn.onclick = ()=>{ contractorsView = btn.dataset.view; render(); };
+  });
+}
+function contractorsBackBar(main){
+  const bar = document.createElement('div');
+  bar.className = 'no-print';
+  bar.style.cssText = 'margin-bottom:12px;';
+  bar.innerHTML = `<button class="btn secondary small" id="cv_back">← חזרה לקבלני משנה</button>`;
+  main.appendChild(bar);
+  document.getElementById('cv_back').onclick = ()=>{
+    editingContractorId = null; editingCrewId = null; editingWorkerId = null;
+    contractorSearchQuery = ''; workerSearchQuery = '';
+    contractorsView = 'menu'; render();
+  };
+}
+// Shared by the crews and workers screens: keeps selectedCrewsContractorId pointing at a real contractor.
+function ensureSelectedContractor(){
+  if(contractors.length===0){ selectedCrewsContractorId = ''; return false; }
+  if(!selectedCrewsContractorId || !contractors.find(c=>c.id===selectedCrewsContractorId)){
+    selectedCrewsContractorId = contractors[0].id;
+  }
+  return true;
+}
+// A contractor's real crews, or - if it has none yet - the virtual default "כללי" (see renderCrews).
+function crewsWithGeneralDefault(contractorId){
+  const real = crewsForContractor(contractorId);
+  return real.length>0 ? real : [{id:GENERAL_CREW_ID, contractorId, name:'כללי', description:'', virtual:true}];
+}
+
+function renderContractorsScreen(main){
   const editing = editingContractorId ? contractors.find(c=>c.id===editingContractorId) : null;
   const card = document.createElement('div');
-  card.className='card';
+  card.className='card fill-screen';
   card.innerHTML = `
     <h2>ניהול קבלני משנה ${editing?'<span class="badge gray">עריכת קבלן קיים</span>':''}</h2>
-    <div class="grid">
+    <div class="grid grid-4">
       <div class="field"><label>שם קבלן המשנה *</label><input id="c_name" value="${editing?esc(editing.name):''}"></div>
       <div class="field"><label>סוג התמחות</label><input id="c_specialty" placeholder="טפסנים, ברזלנים וכדומה" value="${editing?esc(editing.specialty||''):''}"></div>
       <div class="field"><label>איש קשר</label><input id="c_contactName" value="${editing?esc(editing.contactName||''):''}"></div>
@@ -1155,8 +1305,11 @@ function renderContractors(main){
       <button class="btn" id="c_save">${editing?'שמור שינויים':'הוסף קבלן'}</button>
       ${editing?'<button class="btn secondary" id="c_cancel">בטל עריכה</button>':''}
     </div>
-    <h3 style="margin-top:20px;">קבלנים רשומים</h3>
-    <ul class="entity-list" id="c_list"></ul>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:16px 0 8px;">
+      <h3 style="margin:0;">קבלנים רשומים</h3>
+      <input id="c_search" type="search" placeholder="🔍 חיפוש לפי שם או חלק מהשם..." value="${esc(contractorSearchQuery)}" style="max-width:320px;" autocomplete="off">
+    </div>
+    <ul class="entity-list scroll-list" id="c_list"></ul>
   `;
   main.appendChild(card);
 
@@ -1183,16 +1336,36 @@ function renderContractors(main){
   }
 
   const list = document.getElementById('c_list');
+  // Only the list is rebuilt while typing in the search box (never the whole screen), so the
+  // entry form above keeps whatever is typed in it and the search box keeps focus.
+  function renderContractorList(){
+  list.innerHTML = '';
+  const q = contractorSearchQuery.trim().toLowerCase();
+  const visible = sortContractorsAlpha(contractors).filter(c=> !q || (c.name||'').toLowerCase().includes(q));
   if(contractors.length===0){ list.innerHTML = '<div class="empty">אין עדיין קבלני משנה רשומים.</div>'; }
-  sortContractorsAlpha(contractors).forEach(c=>{
+  else if(visible.length===0){ list.innerHTML = '<div class="empty">לא נמצאו קבלנים שהשם שלהם מכיל "' + esc(contractorSearchQuery.trim()) + '".</div>'; }
+  visible.forEach(c=>{
+    const isActive = c.active !== false;
     const li = document.createElement('li');
+    if(!isActive) li.style.opacity = '0.6';
     const contactLine = (c.contactName || c.contactPhone) ? `<div class="meta">${[c.contactName, c.contactPhone].filter(Boolean).map(esc).join(' · ')}</div>` : '';
-    li.innerHTML = `<div><b>${esc(c.name)}</b><div class="meta">${esc(c.specialty||'')}</div>${contactLine}</div>`;
+    li.innerHTML = `<div><b>${esc(c.name)}</b>${!isActive?' <span class="badge gray">לא פעיל</span>':''}<div class="meta">${esc(c.specialty||'')}</div>${contactLine}</div>`;
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex; gap:6px;';
+    actions.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
+    const toggle = document.createElement('button');
+    toggle.className='btn secondary small';
+    toggle.textContent = isActive ? 'סמן כלא פעיל' : 'החזר לפעיל';
+    toggle.title = isActive
+      ? 'הקבלן לא יופיע יותר לבחירה בנוכחות קבלני משנה ביומן היומי. לא משפיע על שום מקום אחר (קבוצות/פועלים/טולבוקס/דוחות) - וניתן להחזיר לפעיל בכל עת.'
+      : 'הקבלן יחזור להופיע לבחירה בנוכחות קבלני משנה ביומן היומי.';
+    toggle.onclick = ()=>{
+      c.active = !isActive;
+      saveAll(); toast(c.active ? 'הקבלן הוחזר לפעיל' : 'הקבלן סומן כלא פעיל'); renderContractorList();
+    };
     const edit = document.createElement('button');
     edit.className='btn secondary small'; edit.textContent='ערוך';
     edit.onclick = ()=>{ editingContractorId = c.id; render(); };
+    actions.appendChild(toggle);
     const del = document.createElement('button');
     del.className='btn danger small'; del.textContent='מחק';
     del.onclick = ()=>{
@@ -1214,8 +1387,9 @@ function renderContractors(main){
     li.appendChild(actions);
     list.appendChild(li);
   });
-
-  renderCrews(main);
+  }
+  renderContractorList();
+  document.getElementById('c_search').oninput = e=>{ contractorSearchQuery = e.target.value; renderContractorList(); };
 }
 
 /* ===================== NEW: Work crews + named worker roster, under a contractor =====================
@@ -1223,23 +1397,22 @@ function renderContractors(main){
    (e.g. one manpower contractor with 3 crews, each under its own foreman/nationality label)
    instead of a single anonymous headcount. A contractor with no crews defined is completely
    unaffected - attendance for it keeps working exactly as before (a manually-typed count). */
+const GENERAL_CREW_ID = '__general__'; // virtual id for the not-yet-created default "כללי" crew
 function renderCrews(main){
   const card = document.createElement('div');
   card.className='card';
-  if(contractors.length===0){
-    return; // "no contractors yet" note is already shown by renderContractors itself
-  }
-  if(!selectedCrewsContractorId || !contractors.find(c=>c.id===selectedCrewsContractorId)){
-    selectedCrewsContractorId = contractors[0].id;
+  if(!ensureSelectedContractor()){
+    card.innerHTML = `<h2>ניהול קבוצות עבודה</h2><div class="note">אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".</div>`;
+    main.appendChild(card);
+    return;
   }
   const editing = editingCrewId ? crews.find(c=>c.id===editingCrewId) : null;
   card.innerHTML = `
     <h2>ניהול קבוצות עבודה ${editing?'<span class="badge gray">עריכת קבוצה קיימת</span>':''}</h2>
-    <div class="note">אם הקבלן מספק כוח אדם דרך כמה קבוצות נפרדות (למשל כל אחת בראשות ראש קבוצה אחר) - אפשר להגדיר כאן את הקבוצות, ולנהל לכל אחת רשימת פועלים בשם (למטה). יומן עבודה יומי יאפשר אז לסמן נוכחות פועל-פועל במקום להקליד רק מספר. קבלן בלי קבוצות מוגדרות ממשיך לעבוד בדיוק כמו קודם.</div>
-    <div class="field"><label>קבלן משנה</label>
-      <select id="crew_contractor" class="searchable">${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
-    </div>
-    <div class="grid">
+    <div class="grid grid-3">
+      <div class="field"><label>קבלן משנה</label>
+        <select id="crew_contractor" class="searchable">${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+      </div>
       <div class="field"><label>שם הקבוצה / ראש קבוצה *</label><input id="crew_name" placeholder="לדוגמה: RANJIT, ואן, ליו" value="${editing?esc(editing.name):''}"></div>
       <div class="field"><label>תיאור (אופציונלי)</label><input id="crew_desc" placeholder="לדוגמה: הודי, סיני" value="${editing?esc(editing.description||''):''}"></div>
     </div>
@@ -1249,6 +1422,7 @@ function renderCrews(main){
     </div>
     <h3 style="margin-top:20px;">קבוצות של קבלן זה</h3>
     <ul class="entity-list" id="crew_list"></ul>
+    <div class="note" style="margin-top:12px;">אם הקבלן מספק כוח אדם דרך כמה קבוצות נפרדות (למשל כל אחת בראשות ראש קבוצה אחר) - אפשר להגדיר כאן את הקבוצות, ולנהל לכל אחת רשימת פועלים בשם (למטה). יומן עבודה יומי יאפשר אז לסמן נוכחות פועל-פועל במקום להקליד רק מספר. קבלן בלי קבוצות מוגדרות ממשיך לעבוד בדיוק כמו קודם. לקבלן שעדיין אין לו קבוצות מוצעת אוטומטית קבוצת ברירת מחדל בשם <b>"כללי"</b> - היא נוצרת בפועל רק כשמוסיפים אליה את הפועל הראשון, ומפסיקה להיות ברירת המחדל ברגע שמגדירים קבוצה אחרת.</div>
   `;
   main.appendChild(card);
 
@@ -1277,10 +1451,17 @@ function renderCrews(main){
   }
 
   const list = document.getElementById('crew_list');
-  const contractorCrews = crewsForContractor(selectedCrewsContractorId);
-  if(contractorCrews.length===0){ list.innerHTML = '<div class="empty">אין עדיין קבוצות מוגדרות לקבלן זה.</div>'; }
+  // A contractor with no real crews yet is offered a virtual "כללי" default crew (never saved as
+  // a real crew until the first worker is actually added to it - see the worker_save handler in
+  // renderWorkers), so merely opening this tab doesn't create data or change any other screen.
+  const contractorCrews = crewsWithGeneralDefault(selectedCrewsContractorId);
   contractorCrews.forEach(cr=>{
     const li = document.createElement('li');
+    if(cr.virtual){
+      li.innerHTML = `<div><b>כללי</b> <span class="badge">ברירת מחדל</span><div class="meta">קבוצה אוטומטית - תיווצר כשתוסיף אליה את הפועל הראשון, ותפסיק להיות ברירת המחדל ברגע שתגדיר קבוצה אחרת.</div></div>`;
+      list.appendChild(li);
+      return;
+    }
     const workerCount = workers.filter(w=>w.crewId===cr.id).length;
     li.innerHTML = `<div><b>${esc(cr.name)}</b><div class="meta">${esc(cr.description||'')}${cr.description?' · ':''}${workerCount} פועלים ברשימה</div></div>`;
     const actions = document.createElement('div');
@@ -1303,14 +1484,25 @@ function renderCrews(main){
     li.appendChild(actions);
     list.appendChild(li);
   });
+}
 
-  renderWorkers(main, contractorCrews);
+// The "ניהול פועלים בקבוצה" screen: has its own contractor picker (the crews screen's picker isn't
+// on this page any more), sharing selectedCrewsContractorId with it.
+function renderWorkersScreen(main){
+  if(!ensureSelectedContractor()){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h2>ניהול פועלים בקבוצה</h2><div class="note">אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".</div>`;
+    main.appendChild(card);
+    return;
+  }
+  renderWorkers(main, crewsWithGeneralDefault(selectedCrewsContractorId));
 }
 
 function renderWorkers(main, contractorCrews){
   if(contractorCrews.length===0) return; // nothing to show workers for until a crew exists
   const card = document.createElement('div');
-  card.className='card';
+  card.className='card fill-screen compact';
   if(!selectedWorkersCrewId || !contractorCrews.find(c=>c.id===selectedWorkersCrewId)){
     selectedWorkersCrewId = contractorCrews[0].id;
   }
@@ -1337,29 +1529,30 @@ function renderWorkers(main, contractorCrews){
   const docPhotoField = (label, key, inputId)=> `<div class="field" id="field_${inputId}">${docPhotoFieldInner(label, key, inputId)}</div>`;
   card.innerHTML = `
     <h2>ניהול פועלים בקבוצה ${editing?'<span class="badge gray">עריכת פועל קיים</span>':''}</h2>
-    <div class="field"><label>קבוצה</label>
-      <select id="worker_crew" class="searchable">${contractorCrews.map(c=>`<option value="${c.id}" ${selectedWorkersCrewId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
-    </div>
-    <div class="grid">
+    <div class="form-scroll">
+    <div class="grid grid-6">
+      <div class="field"><label>קבלן משנה</label>
+        <select id="worker_contractor" class="searchable">${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>קבוצה</label>
+        <select id="worker_crew" class="searchable">${contractorCrews.map(c=>`<option value="${c.id}" ${selectedWorkersCrewId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+      </div>
       <div class="field"><label>ת.ז / דרכון *</label><input id="worker_idnum" value="${editing?esc(editing.idNumber||''):''}"></div>
       <div class="field"><label>שם מלא</label><input id="worker_name" value="${editing?esc(editing.name):''}"></div>
-    </div>
-    <div class="grid grid-3">
-      <div class="field"><label>טלפון</label><input id="worker_phone" type="tel" value="${editing?esc(editing.phone||''):''}"></div>
-      <div class="field"><label>תוקף אישור עבודה בגובה</label><input id="worker_heightExpiry" type="date" value="${editing?esc(editing.heightExpiry||''):''}"></div>
+      <div class="field"><label title="תוקף אישור עבודה בגובה">עבודה בגובה</label><input id="worker_heightExpiry" type="date" title="תוקף אישור עבודה בגובה" value="${editing?esc(editing.heightExpiry||''):''}"></div>
       <div class="field"><label>תוקף ויזה</label><input id="worker_visaExpiry" type="date" value="${editing?esc(editing.visaExpiry||''):''}"></div>
     </div>
-    <div class="grid grid-3" style="margin-top:4px;">
-      ${docPhotoField('צילום ויזה', 'visaPhoto', 'worker_photo_visa')}
+    <div class="grid grid-5">
+      <div class="field"><label>טלפון</label><input id="worker_phone" type="tel" value="${editing?esc(editing.phone||''):''}"></div>
       ${docPhotoField('צילום ת.ז / דרכון', 'idPhoto', 'worker_photo_id')}
+      ${docPhotoField('צילום ויזה', 'visaPhoto', 'worker_photo_visa')}
       ${docPhotoField('צילום אישור עבודה בגובה', 'heightPermitPhoto', 'worker_photo_height')}
+      <div class="field">
+        <label title="עד 5 קבצים, אפשר להוסיף בכל פעם">רשיונות נוספים (עד 5)</label>
+        <input type="file" id="worker_photo_licenses" accept="image/*" multiple>
+      </div>
     </div>
-    <div class="field">
-      <label>רשיונות נוספים</label>
-      <input type="file" id="worker_photo_licenses" accept="image/*" multiple>
-      <div class="hint">עד 5 קבצים. אפשר להוסיף עוד בכל פעם, כל עוד לא עברו את המכסה.</div>
-      <div class="photos-grid" id="worker_licenses_grid" style="margin-top:6px;"></div>
-    </div>
+    <div class="photos-grid" id="worker_licenses_grid" style="margin-top:4px;"></div>
     ${editing && contractorCrews.length>1 ? `
     <div class="field" style="max-width:340px;">
       <label>העברה לקבוצה אחרת (אצל אותו קבלן)</label>
@@ -1375,10 +1568,15 @@ function renderWorkers(main, contractorCrews){
     </div>` : ''}
     <div class="row-actions">
       <button class="btn" id="worker_save">${editing?'שמור שינויים':'הוסף פועל'}</button>
+      <button class="btn secondary" id="worker_reset" type="button" title="מנקה את כל שדות הטופס (כולל התמונות שהועלו ועדיין לא נשמרו) - למקרה של מילוי כפול או שגוי">איפוס טופס</button>
       ${editing?'<button class="btn secondary" id="worker_cancel">בטל עריכה</button>':''}
     </div>
-    <h3 style="margin-top:20px;">פועלים בקבוצה זו</h3>
-    <ul class="entity-list" id="worker_list"></ul>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:8px 0;">
+      <h3 style="margin:0;">פועלים בקבוצה זו</h3>
+      <input id="w_search" type="search" placeholder="🔍 חיפוש לפי שם ו/או ת.ז..." value="${esc(workerSearchQuery)}" style="max-width:300px;" autocomplete="off">
+    </div>
+    <ul class="entity-list scroll-list" id="worker_list"></ul>
   `;
   main.appendChild(card);
 
@@ -1445,9 +1643,34 @@ function renderWorkers(main, contractorCrews){
   };
   renderWorkerLicensesGrid();
 
+  /* "איפוס טופס" - wipes every field of this form (text, dates, staged document photos, extra
+     licenses) back to blank, for a double or wrong entry. Nothing saved is touched: in edit mode
+     the existing worker keeps its stored data until "שמור שינויים" is pressed ("בטל עריכה" is
+     still the way to simply abandon edits and keep the stored values). */
+  document.getElementById('worker_reset').onclick = ()=>{
+    if(!confirm('לאפס את כל השדות בטופס? מה שהוקלד ועדיין לא נשמר יימחק.' + (editing ? '\n(הפועל הקיים לא ישתנה עד שתלחץ "שמור שינויים".)' : ''))) return;
+    ['worker_idnum','worker_name','worker_phone','worker_heightExpiry','worker_visaExpiry'].forEach(id=>{ document.getElementById(id).value = ''; });
+    workerPhotoStaging = {visaPhoto:'', idPhoto:'', heightPermitPhoto:'', additionalLicenses:[]};
+    [['צילום ויזה','visaPhoto','worker_photo_visa'], ['צילום ת.ז / דרכון','idPhoto','worker_photo_id'], ['צילום אישור עבודה בגובה','heightPermitPhoto','worker_photo_height']].forEach(([label,key,inputId])=>{
+      document.getElementById('field_'+inputId).innerHTML = docPhotoFieldInner(label, key, inputId);
+      wireDocPhotoField(label, key, inputId);
+    });
+    document.getElementById('worker_photo_licenses').value = '';
+    renderWorkerLicensesGrid();
+    toast('הטופס אופס');
+  };
+
+  document.getElementById('worker_contractor').onchange = e=>{
+    selectedCrewsContractorId = e.target.value;
+    selectedWorkersCrewId = '';
+    editingWorkerId = null;
+    workerSearchQuery = '';
+    render();
+  };
   document.getElementById('worker_crew').onchange = e=>{
     selectedWorkersCrewId = e.target.value;
     editingWorkerId = null;
+    workerSearchQuery = '';
     render();
   };
 
@@ -1478,6 +1701,13 @@ function renderWorkers(main, contractorCrews){
       editingWorkerId = null;
       saveAll(); toast('הפועל עודכן'); render();
     } else {
+      // First worker for a contractor with no real crews: this is the moment the virtual default
+      // "כללי" crew (see renderCrews) actually gets created and becomes the worker's crew.
+      if(selectedWorkersCrewId === GENERAL_CREW_ID){
+        const general = { id: uid('crew'), contractorId: selectedCrewsContractorId, name:'כללי', description:'' };
+        crews.push(general);
+        selectedWorkersCrewId = general.id;
+      }
       workers.push({ id: uid('worker'), crewId: selectedWorkersCrewId, name, idNumber, phone, heightExpiry, visaExpiry,
         visaPhoto: workerPhotoStaging.visaPhoto, idPhoto: workerPhotoStaging.idPhoto, heightPermitPhoto: workerPhotoStaging.heightPermitPhoto, additionalLicenses: workerPhotoStaging.additionalLicenses,
         active:true, crewHistory:[{crewId:selectedWorkersCrewId, from:todayStr()}] });
@@ -1536,16 +1766,35 @@ function renderWorkers(main, contractorCrews){
   }
 
   const list = document.getElementById('worker_list');
+  // Only the list is rebuilt while typing in the search box (never the whole screen), so the entry
+  // form above keeps whatever is typed/staged in it and the search box keeps focus.
+  function renderWorkerList(){
+  list.innerHTML = '';
   const crewWorkers = sortWorkersAlpha(workers.filter(w=>w.crewId===selectedWorkersCrewId));
+  // Each space-separated word must appear in the name OR in the ת.ז/דרכון (so "אבי", "123", or
+  // "אבי 123" all work) - a plain substring match, anywhere in the text.
+  const tokens = workerSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const visible = tokens.length===0 ? crewWorkers : crewWorkers.filter(w=>{
+    const name = (w.name||'').toLowerCase(), idnum = String(w.idNumber||'').toLowerCase();
+    return tokens.every(t=> name.includes(t) || idnum.includes(t));
+  });
   if(crewWorkers.length===0){ list.innerHTML = '<div class="empty">אין עדיין פועלים רשומים בקבוצה זו.</div>'; }
-  crewWorkers.forEach(w=>{
+  else if(visible.length===0){ list.innerHTML = '<div class="empty">לא נמצאו פועלים בקבוצה זו התואמים ל"' + esc(workerSearchQuery.trim()) + '".</div>'; }
+  visible.forEach(w=>{
     const isActive = w.active !== false;
     const li = document.createElement('li');
     if(!isActive) li.style.opacity = '0.6';
-    const metaParts = [w.name, w.phone, w.heightExpiry?('תוקף גובה: '+fmtDate(w.heightExpiry)):'', w.visaExpiry?('תוקף ויזה: '+fmtDate(w.visaExpiry)):''].filter(Boolean);
-    li.innerHTML = `<div><b>${esc(w.idNumber)}</b>${!isActive?' <span class="badge gray">לא פעיל</span>':''}<div class="meta">${esc(metaParts.join(' · '))}</div></div>`;
+    const metaParts = [w.phone, w.heightExpiry?('תוקף גובה: '+fmtDate(w.heightExpiry)):'', w.visaExpiry?('תוקף ויזה: '+fmtDate(w.visaExpiry)):''].filter(Boolean);
+    // The list is sorted alphabetically by NAME (sortWorkersAlpha) - so the name leads the row,
+    // otherwise the bold leading ת.ז/דרכון numbers made the (correct) order look random. The
+    // ת.ז/דרכון stays on the same first line, as the visible key it was made in 04.09.2026.
+    li.innerHTML = `<div><b>${esc(w.name||w.idNumber)}</b>${w.name?` <span style="color:var(--muted); font-size:12.5px;">ת.ז/דרכון: ${esc(w.idNumber)}</span>`:''}${!isActive?' <span class="badge gray">לא פעיל</span>':''}<div class="meta">${esc(metaParts.join(' · '))}</div></div>`;
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex; gap:6px;';
+    actions.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
+    const printBtn = document.createElement('button');
+    printBtn.className='btn secondary small'; printBtn.textContent='🖨️ הדפס';
+    printBtn.title = 'הדפסת כרטיס הפועל עם המסמכים המצולמים שלו (ויזה, ת.ז/דרכון, אישור עבודה בגובה, רשיונות נוספים)';
+    printBtn.onclick = ()=> renderWorkerPrintView(document.getElementById('app'), w.id);
     const toggle = document.createElement('button');
     toggle.className='btn secondary small';
     toggle.textContent = isActive ? 'סמן כלא פעיל' : 'החזר לפעיל';
@@ -1566,10 +1815,60 @@ function renderWorkers(main, contractorCrews){
         saveAll(); toast('הפועל נמחק'); render();
       }
     };
-    actions.appendChild(toggle); actions.appendChild(edit); actions.appendChild(del);
+    actions.appendChild(printBtn); actions.appendChild(toggle); actions.appendChild(edit); actions.appendChild(del);
     li.appendChild(actions);
     list.appendChild(li);
   });
+  }
+  renderWorkerList();
+  document.getElementById('w_search').oninput = e=>{ workerSearchQuery = e.target.value; renderWorkerList(); };
+}
+
+/* Printable worker card: personal details + every stored document photo (ויזה / ת.ז-דרכון /
+   אישור עבודה בגובה / רשיונות נוספים), opened from the "🖨️ הדפס" button in the workers list.
+   Same dedicated-print-view pattern as the blank toolbox sheet (a sticky no-print bar with
+   "הדפס עכשיו" / back, everything else prints). */
+function renderWorkerPrintView(main, workerId){
+  const w = workers.find(x=>x.id===workerId);
+  if(!w){ toast('הפועל לא נמצא'); return; }
+  const cr = crews.find(x=>x.id===w.crewId);
+  const c = cr ? contractors.find(x=>x.id===cr.contractorId) : null;
+  const docs = [
+    {label:'צילום ויזה', src:w.visaPhoto},
+    {label:'צילום ת.ז / דרכון', src:w.idPhoto},
+    {label:'צילום אישור עבודה בגובה', src:w.heightPermitPhoto},
+    ...(w.additionalLicenses||[]).map(l=>({label:'רשיון נוסף' + (l.caption?(': '+l.caption):''), src:l.dataUrl}))
+  ].filter(d=>d.src);
+  const detailRow = (label, value)=> `<tr><td>${label}</td><td>${value?esc(value):'—'}</td></tr>`;
+  main.innerHTML = `
+    <div class="card worker-printout">
+      ${buildPrintHeader()}
+      <h2>כרטיס פועל</h2>
+      <table class="log-table worker-print-details">
+        <tbody>
+          ${detailRow('שם מלא', w.name)}
+          ${detailRow('ת.ז / דרכון', w.idNumber)}
+          ${detailRow('טלפון', w.phone)}
+          ${detailRow('קבלן משנה', c?c.name:'')}
+          ${detailRow('קבוצה', cr?cr.name:'')}
+          ${detailRow('תוקף אישור עבודה בגובה', w.heightExpiry?fmtDate(w.heightExpiry):'')}
+          ${detailRow('תוקף ויזה', w.visaExpiry?fmtDate(w.visaExpiry):'')}
+          ${detailRow('סטטוס', w.active===false?'לא פעיל':'פעיל')}
+        </tbody>
+      </table>
+      <h3 style="margin-top:14px;">מסמכים מצולמים</h3>
+      ${docs.length===0
+        ? '<div class="empty">לא הועלו מסמכים מצולמים לפועל זה.</div>'
+        : `<div class="worker-doc-grid">${docs.map(d=>`<figure><figcaption>${esc(d.label)}</figcaption><img src="${d.src}"></figure>`).join('')}</div>`}
+    </div>
+  `;
+  const backBar = document.createElement('div');
+  backBar.className = 'no-print';
+  backBar.style.cssText = 'position:sticky; top:calc(var(--topbar-h, 0px) + 10px); z-index:99; display:flex; gap:8px; margin-bottom:12px;';
+  backBar.innerHTML = `<button class="btn" id="workerPrintGo">הדפס עכשיו</button><button class="btn secondary" id="workerPrintBack">חזרה לניהול פועלים</button>`;
+  main.insertBefore(backBar, main.firstChild);
+  document.getElementById('workerPrintGo').onclick = ()=> window.print();
+  document.getElementById('workerPrintBack').onclick = ()=>{ render(); };
 }
 
 /* ===================== NEW: Locations registry (units / shared spaces) ===================== */
@@ -1587,7 +1886,6 @@ function renderLocations(main){
   const editing = editingLocationId ? locations.find(l=>l.id===editingLocationId) : null;
   card.innerHTML = `
     <h2>ניהול מיקומים ${editing?'<span class="badge gray">עריכת מיקום קיים</span>':''}</h2>
-    <div class="note">כל מיקום (בית/יחידה או שטח משותף) משויך לפרויקט ספציפי. לאחר הגדרת המיקומים ניתן יהיה לקשר אליהם רישומי ביצוע ביומן היומי, ולהפיק "דוח ביצוע" מרוכז בטאב "דוחות" - כל ההיסטוריה של בית או שטח מסוים במקום אחד.</div>
     <div class="field"><label>פרויקט</label>
       <select id="loc_project" class="searchable">${projects.map(p=>`<option value="${p.id}" ${selectedLocationsProjectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
     </div>
@@ -1606,6 +1904,7 @@ function renderLocations(main){
     </div>
     <h3 style="margin-top:20px;">מיקומים בפרויקט זה</h3>
     <ul class="entity-list" id="loc_list"></ul>
+    <div class="note" style="margin-top:12px;">כל מיקום (בית/יחידה או שטח משותף) משויך לפרויקט ספציפי. לאחר הגדרת המיקומים ניתן יהיה לקשר אליהם רישומי ביצוע ביומן היומי, ולהפיק "דוח ביצוע" מרוכז בטאב "דוחות" - כל ההיסטוריה של בית או שטח מסוים במקום אחד.</div>
   `;
   main.appendChild(card);
 
@@ -1846,6 +2145,7 @@ function renderDailyLog(main, loadId){
     <div class="print-mirror" id="companyEmployeesMirror">${esc(draft.companyEmployees)}</div>
 
     <h3 style="margin-top:22px;">תיעוד ביצוע</h3>
+    <div class="hint no-print">✍️ בדיקת איות: מילה שגויה מסומנת בקו אדום מתחתיה - לחיצה ימנית עליה מציגה הצעות תיקון. אם לא מופיעים קווים אדומים: ב-Chrome ← הגדרות ← שפות ← "בדיקת איות" ← להפעיל "עברית" (הגדרה חד-פעמית בדפדפן, לא באפליקציה).</div>
     <div id="executionRows"></div>
     <button class="btn secondary small" id="addExecution">+ הוסף מיקום לתיעוד ביצוע</button>
 
@@ -2066,7 +2366,17 @@ function renderAttendanceRows(){
   const wrap = document.getElementById('attendanceRows');
   if(!wrap) return;
   if(draft.attendance.length===0){ wrap.innerHTML = '<div class="empty">לא נוספו קבלנים לנוכחות היום.</div>'; return; }
-  const sortedContractors = sortContractorsAlpha(contractors);
+  // Only active contractors are offered for picking - an inactive one (section 4.1) is meant to
+  // disappear from this selection, not from anything else. A row that already points at a
+  // contractor who has SINCE been marked inactive still shows that contractor (labelled), so
+  // existing attendance never silently breaks - the row just isn't editable to pick that
+  // contractor again once cleared.
+  const activeContractorsSorted = sortContractorsAlpha(contractors.filter(c=>c.active!==false));
+  const contractorOptionsForRow = (selectedId)=>{
+    const selected = selectedId ? contractors.find(c=>c.id===selectedId) : null;
+    const list = (selected && selected.active===false) ? [selected, ...activeContractorsSorted] : activeContractorsSorted;
+    return list.map(c=>`<option value="${c.id}" ${selectedId===c.id?'selected':''}>${esc(c.name)}${c.active===false?' (לא פעיל)':''}</option>`).join('');
+  };
   // Optional crew selection, same idea as תיעוד ביצוע (section 6.5): shown only for a
   // contractor that has crews defined, and always leavable blank either way. Rendered inline
   // (same row/line as the contractor name, not stacked below it) per user request.
@@ -2091,7 +2401,7 @@ function renderAttendanceRows(){
             <td><div style="display:flex; gap:6px; align-items:center;">
               <select data-i="${i}" class="att_c searchable" style="flex:1 1 auto; min-width:0;">
                 <option value="">בחר...</option>
-                ${sortedContractors.map(c=>`<option value="${c.id}" ${row.contractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+                ${contractorOptionsForRow(row.contractorId)}
               </select>${crewCellHtml(row, i)}
             </div></td>
             <td><input type="number" min="0" class="att_w" data-i="${i}" value="${esc(row.workers)}"></td>
@@ -2705,7 +3015,6 @@ function renderToolbox(main){
   const printableContractors = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).length>0));
   card.innerHTML = `
     <h2>טולבוקס - נוכחות והדרכות</h2>
-    <div class="note">כלי נפרד לסימון נוכחות פועלים בשם, לפי קבוצת עבודה: פועלים בשורות, ימות החודש בעמודות. <b>בשלב זה זה אינו משפיע</b> על "מספר הפועלים" הרשום בנוכחות קבלני המשנה ביומן העבודה היומי - שילוב בין השניים מתוכנן לשלב מאוחר יותר.</div>
     <div class="grid grid-3">
       <div class="field"><label>פרויקט *</label>
         <select id="tbx_project" class="searchable">
@@ -2734,6 +3043,7 @@ function renderToolbox(main){
       <button class="btn" id="tbx_printBlankGo">הדפס</button>
       <button class="btn secondary" id="tbx_printBlankCancel">ביטול</button>
     </div>` : ''}
+    <div class="note" style="margin-top:16px;">כלי נפרד לסימון נוכחות פועלים בשם, לפי קבוצת עבודה: פועלים בשורות, ימות החודש בעמודות. <b>בשלב זה זה אינו משפיע</b> על "מספר הפועלים" הרשום בנוכחות קבלני המשנה ביומן העבודה היומי - שילוב בין השניים מתוכנן לשלב מאוחר יותר.</div>
   `;
   main.appendChild(card);
   document.getElementById('tbx_project').onchange = e=>{ toolboxProjectId = e.target.value; renderToolboxMatrix(); };
@@ -2796,7 +3106,7 @@ function renderToolboxBlankFormPrint(main, contractorId, crewId){
   main.innerHTML = buildToolboxBlankFormHtml(contractorId, crewId);
   const backBar = document.createElement('div');
   backBar.className = 'no-print';
-  backBar.style.cssText = 'position:sticky; top:10px; z-index:999; display:flex; gap:8px; margin-bottom:12px;';
+  backBar.style.cssText = 'position:sticky; top:calc(var(--topbar-h, 0px) + 10px); z-index:99; display:flex; gap:8px; margin-bottom:12px;';
   backBar.innerHTML = `<button class="btn" id="tbxBlankPrintGo">הדפס עכשיו</button><button class="btn secondary" id="tbxBlankPrintBack">חזרה לטולבוקס</button>`;
   main.insertBefore(backBar, main.firstChild);
   document.getElementById('tbxBlankPrintGo').onclick = ()=> window.print();
@@ -3077,7 +3387,6 @@ function renderWorkCard(main){
   const contractorsWithWorkers = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).some(cr=>workers.some(w=>w.crewId===cr.id))));
   card.innerHTML = `
     <h2>כרטיס עבודה לפועל</h2>
-    <div class="note">כרטיס שעות אישי לפועל בשם: שעת כניסה ויציאה לכל יום, עם סיכום ימי עבודה וסה"כ שעות לחודש. נפרד מהטולבוקס (שם מסמנים רק נוכחות V, בלי שעות) ומהיומן היומי - ואינו משויך לפרויקט מסוים.</div>
     ${contractorsWithWorkers.length===0 ? '<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>' : `
     <div class="grid grid-3">
       <div class="field"><label>קבלן משנה</label>
@@ -3091,6 +3400,7 @@ function renderWorkCard(main){
     </div>
     <div id="wc_body" style="margin-top:8px;"></div>
     `}
+    <div class="note" style="margin-top:12px;">כרטיס שעות אישי לפועל בשם: שעת כניסה ויציאה לכל יום, עם סיכום ימי עבודה וסה"כ שעות לחודש. נפרד מהטולבוקס (שם מסמנים רק נוכחות V, בלי שעות) ומהיומן היומי - ואינו משויך לפרויקט מסוים.</div>
   `;
   main.appendChild(card);
   if(contractorsWithWorkers.length===0) return;
@@ -3363,7 +3673,6 @@ function renderBulkAttendanceTool(main){
   card.className = 'card';
   card.innerHTML = `
     <h2>תיקון תאריכים לקבלן ⭐</h2>
-    <div class="note">לשימוש כשמגלים שקבלן (למשל מנופאי או עובד מזדמן) לא נרשם בנוכחות היומן היומי במשך כמה ימים ברצף. מוסיף שורת נוכחות + מספר פועלים לכל יומן ש<b>כבר קיים</b> בטווח - לא יוצר יומנים חדשים, ומדלג אוטומטית על תאריך שבו הקבלן כבר מופיע בנוכחות (לא כותב פעמיים).</div>
     <div class="grid grid-4">
       <div class="field"><label>קבלן משנה *</label>
         <select id="ba_contractor" class="searchable"><option value="">בחר קבלן...</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
@@ -3378,6 +3687,7 @@ function renderBulkAttendanceTool(main){
     </div>
     <button class="btn secondary" id="ba_load">טען תאריכים</button>
     <div id="ba_rows" style="margin-top:10px;"></div>
+    <div class="note" style="margin-top:12px;">לשימוש כשמגלים שקבלן (למשל מנופאי או עובד מזדמן) לא נרשם בנוכחות היומן היומי במשך כמה ימים ברצף. מוסיף שורת נוכחות + מספר פועלים לכל יומן ש<b>כבר קיים</b> בטווח - לא יוצר יומנים חדשים, ומדלג אוטומטית על תאריך שבו הקבלן כבר מופיע בנוכחות (לא כותב פעמיים).</div>
   `;
   main.appendChild(card);
 
@@ -3504,7 +3814,6 @@ function renderWorkersAttendanceReport(main){
   card7.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח נוכחות פועלים</h2>
-    <div class="note">פירוט הפועלים שסומנו נוכחים בטאב "טולבוקס" עבור קבלן ספציפי, לאורך טווח תאריכים - כולל סיכום ימי נוכחות לכל פועל. רלוונטי רק לקבלנים שהוגדרו להם קבוצות עבודה עם פועלים.</div>
     ${crewContractors.length===0?'<div class="empty">אין עדיין אף קבלן עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>':`
     <div class="searchbar">
       <div><label>קבלן משנה *</label><select id="r7_contractor" class="searchable"><option value="">בחר קבלן...</option>${crewContractors.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
@@ -3521,6 +3830,7 @@ function renderWorkersAttendanceReport(main){
     <div id="r7_table" style="margin-top:8px;"></div>
     <div id="r7_summary" style="margin-top:16px;"></div>
     `}
+    <div class="note" style="margin-top:12px;">פירוט הפועלים שסומנו נוכחים בטאב "טולבוקס" עבור קבלן ספציפי, לאורך טווח תאריכים - כולל סיכום ימי נוכחות לכל פועל. רלוונטי רק לקבלנים שהוגדרו להם קבוצות עבודה עם פועלים.</div>
   `;
   main.appendChild(card7);
   if(crewContractors.length===0) return;
@@ -3725,7 +4035,6 @@ function renderLocationReport(main){
   card2.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח ביצוע</h2>
-    <div class="note">ריכוז כרונולוגי של כל רישומי הביצוע, לאורך טווח תאריכים. כשבוחרים מיקום ו/או קבלן ספציפיים, השם יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
     <div class="searchbar">
       <div><label>פרויקט *</label>
         <select id="r2_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
@@ -3742,6 +4051,7 @@ function renderLocationReport(main){
     </div>
     <div id="r2_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r2_table" style="margin-top:8px;"></div>
+    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי הביצוע, לאורך טווח תאריכים. כשבוחרים מיקום ו/או קבלן ספציפיים, השם יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card2);
 
@@ -3840,7 +4150,6 @@ function renderExceptionsReport(main){
   card3.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח חריגים</h2>
-    <div class="note">ריכוז כרונולוגי של כל החריגים שנרשמו, לאורך טווח תאריכים. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
     <div class="searchbar">
       <div><label>פרויקט *</label>
         <select id="r3_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
@@ -3856,6 +4165,7 @@ function renderExceptionsReport(main){
     </div>
     <div id="r3_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r3_table" style="margin-top:8px;"></div>
+    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל החריגים שנרשמו, לאורך טווח תאריכים. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card3);
 
@@ -3939,7 +4249,6 @@ function renderDailyWorkReport(main){
   card5.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח פירוט יומיות</h2>
-    <div class="note">ריכוז כרונולוגי של כל רישומי היומיות (עבודות שאינן קשורות לחוזה הישיר), לאורך טווח תאריכים, כולל סיכום ימי עבודה ושעות לתשלום. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
     <div class="searchbar">
       <div><label>פרויקט *</label>
         <select id="r5_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
@@ -3956,6 +4265,7 @@ function renderDailyWorkReport(main){
     <div id="r5_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r5_table" style="margin-top:8px;"></div>
     <div id="r5_summary" style="margin-top:16px;"></div>
+    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי היומיות (עבודות שאינן קשורות לחוזה הישיר), לאורך טווח תאריכים, כולל סיכום ימי עבודה ושעות לתשלום. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card5);
 
@@ -4060,7 +4370,6 @@ function renderContractorReport(main){
   card6.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח נתוני קבלן</h2>
-    <div class="note">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
     <div class="searchbar">
       <div><label>קבלן משנה *</label><select id="r6_contractor" class="searchable"><option value="">בחר קבלן...</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
       <div><label>פרויקט</label><select id="r6_project" class="searchable"><option value="">כל הפרויקטים</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
@@ -4072,6 +4381,7 @@ function renderContractorReport(main){
       <button class="btn secondary" id="r6_pdf">ייצוא ל-PDF (הדפסה)</button>
     </div>
     <div id="r6_output" style="margin-top:12px;"></div>
+    <div class="note" style="margin-top:12px;">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
   `;
   main.appendChild(card6);
 
@@ -4170,7 +4480,6 @@ function renderToolboxMatrixReport(main){
   card8.innerHTML = `
     ${buildPrintHeader()}
     <h2>דוח מטריצת טולבוקס</h2>
-    <div class="note">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או קבוצה ספציפיים.</div>
     ${printableContractors.length===0?'<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>':`
     <div class="searchbar">
       <div><label>פרויקט *</label><select id="r8_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
@@ -4185,6 +4494,7 @@ function renderToolboxMatrixReport(main){
     <div id="r8_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r8_table" style="margin-top:8px;"></div>
     `}
+    <div class="note" style="margin-top:12px;">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או קבוצה ספציפיים.</div>
   `;
   main.appendChild(card8);
   if(printableContractors.length===0) return;
@@ -4271,7 +4581,6 @@ function renderFullLogsReport(main){
   card4.className='card';
   card4.innerHTML = `
     <h2>הדפסת יומנים מלאים לפי טווח</h2>
-    <div class="note">בניגוד לדוחות האחרים (שמסכמים נתונים), האפשרות הזו מדפיסה את היומנים היומיים המלאים עצמם - כל הסעיפים, בדיוק כפי שהם נראים ביומן יומי - עבור כל התאריכים בטווח שנבחר.</div>
     <div class="searchbar">
       <div><label>פרויקט *</label>
         <select id="r4_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
@@ -4287,6 +4596,7 @@ function renderFullLogsReport(main){
       <button class="btn" id="r4_go">הפק ותצוגה מקדימה</button>
     </div>
     <div id="r4_summary" style="margin-top:12px;"></div>
+    <div class="note" style="margin-top:12px;">בניגוד לדוחות האחרים (שמסכמים נתונים), האפשרות הזו מדפיסה את היומנים היומיים המלאים עצמם - כל הסעיפים, בדיוק כפי שהם נראים ביומן יומי - עבור כל התאריכים בטווח שנבחר.</div>
   `;
   main.appendChild(card4);
 
@@ -4325,7 +4635,6 @@ function renderSettings(main){
   card.className='card';
   card.innerHTML = `
     <h2>פרטי החברה המנהלת</h2>
-    <div class="note">הפרטים הבאים יופיעו אוטומטית בראש כל יומן ותיק מיקום מודפסים.</div>
     <div class="grid">
       <div class="field"><label>שם החברה</label><input id="co_name" value="${esc(company.name||'')}"></div>
       <div class="field"><label>מספר רישיון קבלן / ח.פ</label><input id="co_license" value="${esc(company.license||'')}"></div>
@@ -4336,6 +4645,7 @@ function renderSettings(main){
       ${company.logoDataUrl?`<div style="margin-top:8px; display:flex; align-items:center; gap:10px;"><img src="${company.logoDataUrl}" style="height:60px; border:1px solid var(--border); border-radius:6px;"><button class="btn danger small" id="co_logo_rm">הסר לוגו</button></div>`:''}
     </div>
     <div class="row-actions"><button class="btn" id="co_save">שמור פרטי חברה</button></div>
+    <div class="note" style="margin-top:12px;">הפרטים הבאים יופיעו אוטומטית בראש כל יומן ותיק מיקום מודפסים.</div>
   `;
   main.appendChild(card);
 
@@ -4361,7 +4671,6 @@ function renderBackupSection(main){
   card.className='card';
   card.innerHTML = `
     <h2>גיבוי ושחזור נתונים</h2>
-    <div class="note">הנתונים בגרסה זו נשמרים אוטומטית ב-Google Drive שלך (ראו הסטטוס ליד הכותרת למעלה). כלי הגיבוי כאן משמש להורדת עותק מקומי נוסף לביטחון, או לייבוא נתונים ישנים ממכשיר/גרסה אחרת.</div>
     <div class="row-actions">
       <button class="btn" id="b_export">ייצוא גיבוי מלא</button>
     </div>
@@ -4376,6 +4685,7 @@ function renderBackupSection(main){
     </div>
     <div class="hint" id="b_modeHint">מיזוג: כל פרויקט/קבלן/מיקום/יומן שלא קיים כאן עדיין - יתווסף. נתונים קיימים לא יימחקו ולא יידרסו. אם יומן מהקובץ מתנגש עם יומן קיים (אותו פרויקט ואותו תאריך, אך רשומות שונות) - הוא ידולג, ותקבל סיכום מפורט כדי לבדוק ידנית.</div>
     <div class="row-actions"><button class="btn secondary" id="b_import">טען מהקובץ שנבחר</button></div>
+    <div class="note" style="margin-top:12px;">הנתונים בגרסה זו נשמרים אוטומטית ב-Google Drive שלך (ראו הסטטוס ליד הכותרת למעלה). כלי הגיבוי כאן משמש להורדת עותק מקומי נוסף לביטחון, או לייבוא נתונים ישנים ממכשיר/גרסה אחרת.</div>
   `;
   main.appendChild(card);
 
@@ -4523,6 +4833,21 @@ function restoreDataMerge(data){
   }
   toast(summary);
 }
+
+/* ===================== Spellcheck ===================== */
+/* Word-style spelling marks (red underline + right-click suggestions) come from the browser's own
+   spellchecker - a page can't ship its own Hebrew dictionary in a single file, but it can make
+   sure every free-text area asks for it in Hebrew. The one thing the page can't do is turn the
+   Hebrew dictionary on in the browser itself (Chrome → Settings → Languages → Spell check), which
+   is why the daily log shows a short hint about it. Free-text areas are created all over the app
+   by innerHTML re-renders, so a MutationObserver tags whichever ones exist at any moment. */
+function enableSpellcheckOnTextareas(){
+  document.querySelectorAll('#app textarea').forEach(t=>{
+    if(t.getAttribute('spellcheck')!=='true') t.setAttribute('spellcheck','true');
+    if(t.getAttribute('lang')!=='he') t.setAttribute('lang','he');
+  });
+}
+new MutationObserver(enableSpellcheckOnTextareas).observe(document.getElementById('app'), {childList:true, subtree:true});
 
 /* ===================== Google Sign-In + Drive bootstrap ===================== */
 const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
