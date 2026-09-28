@@ -557,18 +557,16 @@ async function driveSaveNow(){
   if(driveSaveInFlight){ driveSavePending = true; return; }
   driveSaveInFlight = true;
   try{
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`, {
-      headers:{ Authorization:'Bearer '+accessToken }
-    });
+    const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`);
     const meta = await metaRes.json();
     if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
     if(driveFileModifiedTime && meta.modifiedTime !== driveFileModifiedTime){
       setDriveStatus('⚠ מישהו אחר שמר שינויים בינתיים - רענן את הדף לפני שממשיכים לערוך, כדי לא לדרוס אותם');
       return;
     }
-    const putRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime`, {
+    const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime`, {
       method:'PATCH',
-      headers:{ Authorization:'Bearer '+accessToken, 'Content-Type':'application/json' },
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify(buildFullPayload())
     });
     const putJson = await putRes.json();
@@ -4874,10 +4872,51 @@ let accessToken = null;
 let tokenClient = null;
 let driveFileId = null;
 let driveFileModifiedTime = null;
+let tokenRefreshTimer = null;
 
 function gateStatus(text){
   const el = document.getElementById('gateStatus');
   if(el) el.textContent = text;
+}
+
+/* Google's access tokens (from initTokenClient) expire after ~1 hour, and unlike gapi's old
+   client library, GIS does not refresh them on its own - every Drive call after that point
+   used to fail with "Request had invalid authentication credentials" until the page was
+   reloaded (28.09.2026 bug report). Two layers fix this:
+   1) scheduleTokenRefresh, called after every token we get, silently asks for a new one
+      ~5 minutes before this one expires - so in the common case a save never even sees a
+      stale token.
+   2) driveFetch (used for every Drive API call instead of a bare fetch) is a safety net: if a
+      request still comes back 401 (clock drift, laptop asleep past the timer, etc.), it
+      refreshes once and retries automatically, invisibly to the caller. */
+function requestFreshToken(){
+  return new Promise((resolve, reject)=>{
+    const prevCallback = tokenClient.callback;
+    tokenClient.callback = (resp)=>{
+      tokenClient.callback = prevCallback;
+      if(resp.error){ reject(new Error(resp.error_description || resp.error)); return; }
+      accessToken = resp.access_token;
+      if(resp.expires_in) scheduleTokenRefresh(resp.expires_in);
+      resolve(accessToken);
+    };
+    tokenClient.requestAccessToken({prompt:''});
+  });
+}
+function scheduleTokenRefresh(expiresInSeconds){
+  clearTimeout(tokenRefreshTimer);
+  const ms = Math.max((expiresInSeconds - 300) * 1000, 30000);
+  tokenRefreshTimer = setTimeout(()=>{ requestFreshToken().catch(()=>{}); }, ms);
+}
+async function driveFetch(url, options={}){
+  const opts = Object.assign({}, options, { headers: Object.assign({}, options.headers, { Authorization:'Bearer '+accessToken }) });
+  let res = await fetch(url, opts);
+  if(res.status === 401){
+    try{ await requestFreshToken(); }
+    catch(e){ return res; } // refresh itself failed (e.g. revoked access) - surface the original 401 to the caller
+    opts.headers.Authorization = 'Bearer '+accessToken;
+    res = await fetch(url, opts);
+  }
+  return res;
 }
 
 window.addEventListener('load', ()=>{
@@ -4907,6 +4946,7 @@ async function onDriveSignIn(resp){
     return;
   }
   accessToken = resp.access_token;
+  if(resp.expires_in) scheduleTokenRefresh(resp.expires_in);
   gateStatus('טוען נתונים מ-Drive...');
   try{
     await loadOrCreateDriveFile();
@@ -4925,18 +4965,14 @@ async function onDriveSignIn(resp){
    brand-new Drive (nothing created yet) seeds an empty one instead of failing. */
 async function loadOrCreateDriveFile(){
   const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
-  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`, {
-    headers:{ Authorization:'Bearer '+accessToken }
-  });
+  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`);
   const listJson = await listRes.json();
   if(!listRes.ok) throw new Error(listJson.error ? listJson.error.message : 'שגיאה בחיפוש הקובץ ב-Drive');
 
   if(listJson.files && listJson.files.length>0){
     driveFileId = listJson.files[0].id;
     driveFileModifiedTime = listJson.files[0].modifiedTime;
-    const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
-      headers:{ Authorization:'Bearer '+accessToken }
-    });
+    const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
     if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
     const data = await contentRes.json();
     applyFullData(data);
@@ -4948,9 +4984,9 @@ async function loadOrCreateDriveFile(){
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
       `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(buildFullPayload())}\r\n` +
       `--${boundary}--`;
-    const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
+    const createRes = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
       method:'POST',
-      headers:{ Authorization:'Bearer '+accessToken, 'Content-Type':'multipart/related; boundary='+boundary },
+      headers:{ 'Content-Type':'multipart/related; boundary='+boundary },
       body
     });
     const createJson = await createRes.json();
