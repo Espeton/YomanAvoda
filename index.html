@@ -143,8 +143,10 @@
     outline:2px solid var(--navy); outline-offset:-2px; background:#fff;
   }
   .log-table td:hover{background:#F5F8FC;}
-  .contractor-chip{display:flex; align-items:center; justify-content:space-between; gap:6px; font-size:13.5px; padding:4px 2px; flex-wrap:nowrap; max-width:100%;}
-  .contractor-chip > span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto;}
+  .contractor-chip{display:flex; align-items:center; justify-content:space-between; gap:6px; font-size:13.5px; padding:4px 2px; flex-wrap:wrap; max-width:100%;}
+  /* Full contractor/crew name wraps onto extra lines instead of being cut off with "..." - the
+     row (and its table row) simply grows taller when a name doesn't fit on one line (28.09.2026). */
+  .contractor-chip > span{overflow-wrap:break-word; white-space:normal; min-width:0; flex:1 1 auto;}
   .contractor-chip .change-contractor-btn{flex:0 0 auto;}
   .exec-table{table-layout:fixed;}
   .exec-table .ex_crew{min-width:56px;}
@@ -2567,7 +2569,7 @@ function renderExecutionRows(){
   if(draft.execution.length>0){
     wrap.innerHTML = `
       <table class="log-table has-actions exec-table">
-        <colgroup><col style="width:14%"><col style="width:27%"><col style="width:*"><col style="width:50px"></colgroup>
+        <colgroup><col style="width:14%"><col style="width:45%"><col style="width:*"><col style="width:50px"></colgroup>
         <thead><tr><th>מיקום</th><th>קבלן משנה</th><th>רישום ביצוע / ממצאים</th><th></th></tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
