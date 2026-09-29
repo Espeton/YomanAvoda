@@ -335,7 +335,13 @@
   .log-title-row .print-logo{ height:120px; border-radius:4px; }
   .print-mirror{display:none;}
   @media print{
-    header, nav, .no-print, button{display:none !important;}
+    /* #topbar (header/nav/myProjectBar) is position:sticky on screen - Chrome re-anchors a sticky
+       element on every printed page, so leaving it in place made "הפרויקט שלי" reappear stuck
+       mid-page, overlapping table rows on the 2nd+ page (29.09.2026 bug report: blank toolbox
+       attendance form, filtered to one contractor). header/nav were already hidden for print;
+       myProjectBar and the sticky positioning itself were not - both are needed. */
+    #topbar{position:static !important;}
+    header, nav, #myProjectBar, .no-print, button{display:none !important;}
     body{background:#fff; font-size:12px; min-height:0 !important;}
     main{max-width:100%; margin:0; padding:0;}
     .card{box-shadow:none; border:1px solid #999; padding:8px 10px !important; margin-bottom:6px !important;}
