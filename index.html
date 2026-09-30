@@ -1549,7 +1549,7 @@ function renderWorkers(main, contractorCrews){
     const val = workerPhotoStaging[key];
     return `
       <label>${label}</label>
-      <input type="file" id="${inputId}" accept="image/*">
+      <input type="file" id="${inputId}" accept="image/*,application/pdf">
       ${val ? `<div class="photo-thumb" style="margin-top:6px;"><button type="button" class="rm doc-photo-rm" data-doc="${key}">×</button><img src="${val}"></div>` : ''}
     `;
   };
@@ -1575,11 +1575,12 @@ function renderWorkers(main, contractorCrews){
       ${docPhotoField('צילום ויזה', 'visaPhoto', 'worker_photo_visa')}
       ${docPhotoField('צילום אישור עבודה בגובה', 'heightPermitPhoto', 'worker_photo_height')}
       <div class="field">
-        <label title="עד 5 קבצים, אפשר להוסיף בכל פעם">רשיונות נוספים (עד 5)</label>
-        <input type="file" id="worker_photo_licenses" accept="image/*" multiple>
+        <label title="עד 5 קבצים, אפשר להוסיף בכל פעם - תמונה או PDF (עמוד ראשון בלבד)">רשיונות נוספים (עד 5)</label>
+        <input type="file" id="worker_photo_licenses" accept="image/*,application/pdf" multiple>
       </div>
     </div>
     <div class="photos-grid" id="worker_licenses_grid" style="margin-top:4px;"></div>
+    <div class="hint">אפשר להעלות גם קובץ PDF בשדות המסמכים - הוא יומר אוטומטית לתמונה (העמוד הראשון בלבד).</div>
     ${editing && contractorCrews.length>1 ? `
     <div class="field" style="max-width:340px;">
       <label>העברה לקבוצה אחרת (אצל אותו קבלן)</label>
@@ -1619,10 +1620,14 @@ function renderWorkers(main, contractorCrews){
     fileInput.onchange = async (e)=>{
       const file = e.target.files[0];
       if(!file) return;
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name||'');
+      if(isPdf) toast('ממיר PDF לתמונה...');
       try{
-        workerPhotoStaging[key] = await compressImage(file, 1200, 0.75);
+        const {dataUrl, note} = await photoOrPdfDataUrl(file, 1200, 0.75);
+        workerPhotoStaging[key] = dataUrl;
         fieldEl.innerHTML = docPhotoFieldInner(label, key, inputId);
         wireDocPhotoField(label, key, inputId);
+        if(note) toast(note);
       }catch(err){
         toast(err.message || 'שגיאה בהעלאת הקובץ');
         e.target.value = '';
@@ -1665,14 +1670,17 @@ function renderWorkers(main, contractorCrews){
     const files = Array.from(e.target.files);
     const room = 5 - workerPhotoStaging.additionalLicenses.length;
     if(room<=0){ toast('הגעת למקסימום 5 קבצים'); e.target.value=''; return; }
-    const failed = [];
+    const failed = [], notes = [];
+    if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
     for(const f of files.slice(0, room)){
       try{
-        const dataUrl = await compressImage(f, 1200, 0.75);
+        const {dataUrl, note} = await photoOrPdfDataUrl(f, 1200, 0.75);
         workerPhotoStaging.additionalLicenses.push({caption:'', dataUrl});
+        if(note) notes.push(note);
       }catch(err){ failed.push(f.name); }
     }
-    if(failed.length) toast(`לא הועלו (לא תמונות נתמכות): ${failed.join(', ')}`);
+    if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
+    else if(notes.length) toast(notes.join(' · '));
     else if(files.length>room) toast('נוספו עד 5 קבצים בלבד (המכסה)');
     e.target.value='';
     renderWorkerLicensesGrid();
@@ -3030,6 +3038,66 @@ function compressImage(file, maxDim, quality){
     reader.onerror = ()=> reject(new Error(`שגיאה בקריאת הקובץ "${file.name}"`));
     reader.readAsDataURL(file);
   });
+}
+
+/* ===================== PDF document uploads (worker documents only) ===================== */
+/* Worker documents (visa/ת.ז/עבודה בגובה/רשיונות נוספים) are frequently scanned/received as PDF
+   (01.10.2026 request - "80% מהמסמכים שאני מקבל הם ב-PDF"), unlike jobsite photos or the company
+   logo, which stay image-only. Rather than storing the PDF itself and having to special-case its
+   display AND its printing (an embedded PDF viewer is not reliably included when a page prints -
+   too fragile to build the "also shows up when printing the worker card" requirement on), the
+   PDF's first page is rendered to a canvas once, at upload time, and stored as a plain JPEG data
+   URL exactly like a photo. Every existing call site (thumbnails, the licenses gallery, the
+   printed worker card) then needs zero PDF-specific handling - it already just works, because as
+   far as the rest of the app is concerned, this IS a photo now.
+   pdf.js loads from a CDN lazily (only once a PDF is actually chosen) rather than on every page
+   load, since the vast majority of visits never touch it - this WEB version already requires
+   internet for Google Drive anyway, so an on-demand CDN fetch fits the same constraints. */
+/* pdf.js only ships an ES-module build on cdnjs from v5+ on (no more classic global-script
+   pdf.min.js) - loaded via dynamic import(), which works fine from inside a plain classic
+   script like this one; it just returns the module namespace instead of setting a window
+   global. Pinned to a specific version (checked against cdnjs' actual file listing on
+   01.10.2026, not guessed) so a future pdf.js release can't change this out from under us. */
+const PDFJS_VERSION = '6.3.289';
+let pdfjsModulePromise = null;
+function ensurePdfJs(){
+  if(pdfjsModulePromise) return pdfjsModulePromise;
+  pdfjsModulePromise = import(`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.mjs`)
+    .then(mod=>{
+      mod.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.mjs`;
+      return mod;
+    })
+    .catch(e=>{ pdfjsModulePromise = null; throw new Error('טעינת ספריית ה-PDF נכשלה - בדוק חיבור לאינטרנט ונסה שוב.'); });
+  return pdfjsModulePromise;
+}
+async function pdfFirstPageToJpeg(file, maxDim, quality){
+  const pdfjsLib = await ensurePdfJs();
+  let pdf;
+  try{
+    pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+  }catch(e){
+    throw new Error(`לא הצלחתי לקרוא את "${file.name}" כקובץ PDF - ייתכן שהוא פגום או מוצפן.`);
+  }
+  const page = await pdf.getPage(1);
+  const baseViewport = page.getViewport({scale:1});
+  const scale = maxDim / Math.max(baseViewport.width, baseViewport.height);
+  const viewport = page.getViewport({scale});
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  return {dataUrl, pageCount: pdf.numPages};
+}
+/* Drop-in replacement for compressImage() at the worker-document call sites: PDF files go
+   through pdf.js, everything else through the normal image path. Only the PDF path can report a
+   multi-page note back to the caller (a plain image obviously never has one). */
+async function photoOrPdfDataUrl(file, maxDim, quality){
+  if(file.type === 'application/pdf' || /\.pdf$/i.test(file.name||'')){
+    const {dataUrl, pageCount} = await pdfFirstPageToJpeg(file, maxDim, quality);
+    return {dataUrl, note: pageCount>1 ? `הומר רק העמוד הראשון מתוך ${pageCount} ב-"${file.name}"` : null};
+  }
+  return {dataUrl: await compressImage(file, maxDim, quality), note:null};
 }
 
 /* ===================== Toolbox: standalone named-worker attendance matrix ===================== */
