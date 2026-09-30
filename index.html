@@ -4872,6 +4872,24 @@ function enableSpellcheckOnTextareas(){
 }
 new MutationObserver(enableSpellcheckOnTextareas).observe(document.getElementById('app'), {childList:true, subtree:true});
 
+/* #topbar (header/nav/"הפרויקט שלי" bar) is position:sticky on screen. Hiding it with an
+   @media print rule alone was NOT enough (29-30.09.2026 bug report): on a print job that spans
+   more than one physical page, Chrome still resurrects a sticky-turned-hidden element at the
+   top of the 2nd+ page, overlapping whatever table rows land there - moving with the content
+   instead of disappearing, which is why it showed up in a different spot for a longer worker
+   list. Actually removing #topbar's display via JS for the whole print operation (not just a
+   CSS rule Chrome can reinterpret per page) sidesteps that bug entirely - it also makes the
+   @media print rule for #topbar/#myProjectBar (still kept below, belt-and-suspenders) redundant
+   in practice, but harmless to leave in. */
+window.addEventListener('beforeprint', ()=>{
+  const bar = document.getElementById('topbar');
+  if(bar){ bar.dataset.prevDisplay = bar.style.display; bar.style.display = 'none'; }
+});
+window.addEventListener('afterprint', ()=>{
+  const bar = document.getElementById('topbar');
+  if(bar){ bar.style.display = bar.dataset.prevDisplay || ''; delete bar.dataset.prevDisplay; }
+});
+
 /* ===================== Google Sign-In + Drive bootstrap ===================== */
 const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
 const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
