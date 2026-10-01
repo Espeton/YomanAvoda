@@ -311,6 +311,15 @@
     font-size:13.5px; box-shadow:0 4px 12px rgba(0,0,0,0.15); z-index:999; display:none;
   }
   .note{background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:10px 14px; border-radius:8px; font-size:12.5px; margin-bottom:16px;}
+  /* Save-time merge conflict panel (01.10.2026) - amber/warn, deliberately louder than .note
+     since it blocks saving until resolved. */
+  .conflict-panel{background:#FFFBEB; border:1px solid #F5D98B; color:#7A5A0A; padding:12px 16px; border-radius:8px; margin-bottom:16px;}
+  .conflict-panel h3{margin:0 0 4px; font-size:14px; color:#92610C;}
+  .conflict-row{border-top:1px dashed #F0DCA0; padding:8px 0;}
+  .conflict-row:first-of-type{border-top:none;}
+  .conflict-row > b{display:block; margin-bottom:6px; font-size:12.5px;}
+  .conflict-choice{display:flex; gap:8px; flex-wrap:wrap;}
+  .conflict-choice .btn{background:#fff;}
   .empty{color:var(--muted); font-size:13px; padding:14px; text-align:center;}
   .searchbar{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
   .searchbar > div{flex:1; min-width:150px;}
@@ -513,7 +522,130 @@ function runMigrations(){
     unnumbered.sort((a,b)=>a.date.localeCompare(b.date));
     unnumbered.forEach(l=>{ l.serialNumber = p.nextSerial; p.nextSerial += 1; });
   });
+
+  /* Give every row inside a log's nested lists (attendance/equipment/execution/photos/visitors/
+     exceptions/planning/dailyWork/orders/ordersPlaced) a stable id, backfilled for logs saved
+     before this existed (01.10.2026 - needed so the save-time merge below can match "the same
+     row" between two people's concurrent edits by id instead of by array position, which breaks
+     the moment the two sides added/removed rows in different orders). */
+  const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+  logs.forEach(l=>{
+    LOG_ROW_FIELDS.forEach(f=>{
+      if(!Array.isArray(l[f])) return;
+      l[f].forEach(row=>{ if(row && !row.id) row.id = uid(f.slice(0,4)); });
+    });
+  });
 }
+
+/* ===================== Save-time merge (3-way, per-record/per-field) ===================== */
+/* Replaces "someone else saved in the meantime - refresh and lose your edit" (the only option
+   until 01.10.2026) with an actual merge, for two people editing at the same time - requested
+   after a real collision where one person's whole unsaved entry was silently discarded.
+   How it works: BASE is a deep snapshot of the full payload taken right after the last load or
+   the last successful save - i.e. the last point where this browser and Drive definitely agreed.
+   At save time, if Drive's file has moved on since BASE, we fetch its current content (REMOTE)
+   and 3-way-diff BASE/LOCAL(=our live in-memory data)/REMOTE, per record (matched by id) and,
+   for the logs collection specifically, per field within a record and per row within a log's own
+   nested lists (attendance/execution/...). A field only one side touched is taken from that side
+   - no conflict, no user involvement, and this is the overwhelming common case (two people
+   working on different logs, or different parts of the same log, merge invisibly). Only a field
+   BOTH sides changed to DIFFERENT values is a genuine conflict - for the log currently open in
+   this browser, those are surfaced for the user to pick in-place (see mergeConflictPrompt in
+   renderDailyLog); for anything else they're resolved by keeping the local value (never silently
+   dropped - just not blocked on either). */
+function deepEqual(a, b){
+  if(a===b) return true;
+  if(a==null || b==null) return a===b;
+  if(typeof a !== typeof b) return false;
+  if(typeof a !== 'object') return a===b;
+  if(Array.isArray(a) !== Array.isArray(b)) return false;
+  if(Array.isArray(a)){
+    if(a.length !== b.length) return false;
+    for(let i=0;i<a.length;i++) if(!deepEqual(a[i], b[i])) return false;
+    return true;
+  }
+  const ak = Object.keys(a), bk = Object.keys(b);
+  if(ak.length !== bk.length) return false;
+  for(const k of ak){ if(!Object.prototype.hasOwnProperty.call(b,k) || !deepEqual(a[k], b[k])) return false; }
+  return true;
+}
+/* Three-way merge of one field/value. Only reports a conflict when BOTH sides changed it, to
+   DIFFERENT values, relative to base - one side changing it (or both making the identical
+   change) is never a conflict. */
+function mergeField(base, local, remote){
+  const localChanged = !deepEqual(local, base);
+  const remoteChanged = !deepEqual(remote, base);
+  if(!remoteChanged) return {value: local, conflict:null};
+  if(!localChanged) return {value: remote, conflict:null};
+  if(deepEqual(local, remote)) return {value: local, conflict:null};
+  return {value: local, conflict:{base, local, remote}};
+}
+/* Merges one record generically: every key present on local and/or remote goes through
+   mergeField, except keys named in arrayFieldsById, which are merged as id-matched row lists
+   instead (see mergeRowsById) - this is what lets a log's own attendance/execution/etc. lists
+   merge row-by-row rather than the whole list counting as one big conflicting field. */
+function mergeRecord(base, local, remote, arrayFieldsById){
+  arrayFieldsById = arrayFieldsById || [];
+  const merged = {...local};
+  const conflicts = [];
+  const keys = new Set([...Object.keys(local||{}), ...Object.keys(remote||{}), ...Object.keys(base||{})]);
+  arrayFieldsById.forEach(f=>keys.delete(f));
+  keys.forEach(k=>{
+    const {value, conflict} = mergeField(base?.[k], local?.[k], remote?.[k]);
+    merged[k] = value;
+    if(conflict) conflicts.push({field:k, ...conflict});
+  });
+  arrayFieldsById.forEach(f=>{
+    const {merged:mergedRows, conflicts:rowConflicts} = mergeRowsById(base?.[f], local?.[f], remote?.[f]);
+    merged[f] = mergedRows;
+    if(rowConflicts.length) conflicts.push({field:f, rowConflicts});
+  });
+  return {record: merged, conflicts};
+}
+/* Merges an array of {id,...} records between base/local/remote. A row added on one side only is
+   kept; a row deleted on one side (present in base, missing there, unchanged on the other side)
+   is respected as a deletion; a row edited on one side and deleted on the other is KEPT (never
+   silently dropped) and flagged. Rows present in local/remote but missing from base (true adds)
+   never reach deepEqual-against-base, since there's nothing to compare. */
+function mergeRowsById(baseArr, localArr, remoteArr, mergeRowFn){
+  mergeRowFn = mergeRowFn || ((b,l,r)=>mergeRecord(b,l,r,[]));
+  const baseMap = new Map((baseArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
+  const localMap = new Map((localArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
+  const remoteMap = new Map((remoteArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
+  const orderedIds = []; const seen = new Set();
+  (localArr||[]).forEach(r=>{ if(r&&r.id&&!seen.has(r.id)){ orderedIds.push(r.id); seen.add(r.id); } });
+  (remoteArr||[]).forEach(r=>{ if(r&&r.id&&!seen.has(r.id)){ orderedIds.push(r.id); seen.add(r.id); } });
+  const merged = []; const conflicts = [];
+  orderedIds.forEach(id=>{
+    const b = baseMap.get(id), l = localMap.get(id), r = remoteMap.get(id);
+    if(l && !r){
+      if(b && deepEqual(l,b)) return; // unchanged locally, deleted remotely -> respect the deletion
+      merged.push(l);
+      if(b && !deepEqual(l,b)) conflicts.push({id, type:'edited-vs-deleted', local:l});
+      return;
+    }
+    if(!l && r){
+      if(b && deepEqual(r,b)) return; // unchanged remotely, deleted locally -> respect the deletion
+      if(!b){ merged.push(r); return; } // added remotely only
+      conflicts.push({id, type:'deleted-vs-edited', remote:r}); // edited locally (as a deletion) vs edited remotely - keep neither side's row body, just flag it happened
+      return;
+    }
+    if(!l && !r) return; // deleted on both sides, or never existed - nothing to keep
+    const {record, conflicts:rowConflicts} = mergeRowFn(b, l, r);
+    merged.push(record);
+    if(rowConflicts.length) conflicts.push({id, type:'field-conflict', fields:rowConflicts});
+  });
+  return {merged, conflicts};
+}
+const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+function mergeLogRecord(base, local, remote){ return mergeRecord(base, local, remote, LOG_ARRAY_FIELDS); }
+/* Top-level entry: merges one whole collection (array of records with id - everything in the
+   payload except `company`, which is a single record merged directly through mergeRecord). */
+function mergeCollection(name, baseArr, localArr, remoteArr){
+  const rowMerger = name==='logs' ? mergeLogRecord : undefined;
+  return mergeRowsById(baseArr, localArr, remoteArr, rowMerger);
+}
+
 function formatSerial(n){ return n ? String(n).padStart(3,'0') : ''; }
 function assignSerialIfNeeded(log){
   if(log.serialNumber) return;
@@ -565,6 +697,29 @@ function saveAll(){
   clearTimeout(driveSaveTimer);
   driveSaveTimer = setTimeout(driveSaveNow, 800);
 }
+/* Deep snapshot of the full payload, taken right after a load or a successful save - the common
+   ancestor the next 3-way merge diffs against. JSON round-trip is fine here (everything in the
+   payload is itself JSON - no Date objects etc). */
+function snapshotPayload(){ return JSON.parse(JSON.stringify(buildFullPayload())); }
+let baseSnapshot = null;
+/* get/set per collection, needed because mergeCollection works generically on "a collection by
+   name" but the collections themselves are plain top-level `let`s (not properties of some single
+   state object) - these closures are the bridge between the two. */
+const collectionAccessors = {
+  projects: { get:()=>projects, set:v=>{projects=v;} },
+  contractors: { get:()=>contractors, set:v=>{contractors=v;} },
+  locations: { get:()=>locations, set:v=>{locations=v;} },
+  subProjects: { get:()=>subProjects, set:v=>{subProjects=v;} },
+  crews: { get:()=>crews, set:v=>{crews=v;} },
+  workers: { get:()=>workers, set:v=>{workers=v;} },
+  toolboxRecords: { get:()=>toolboxRecords, set:v=>{toolboxRecords=v;} },
+  workCardEntries: { get:()=>workCardEntries, set:v=>{workCardEntries=v;} },
+};
+/* Field-level conflicts on the log currently open in this browser (null when there are none) -
+   renderDailyLog reads this to show the resolution panel. Each entry is {field, base, local,
+   remote} for a plain field, or {field, rowConflicts:[{id,fields:[...]}]} for one of the log's
+   own row lists (attendance/execution/...). */
+let activeLogMergeConflicts = null;
 async function driveSaveNow(){
   if(driveSaveInFlight){ driveSavePending = true; return; }
   driveSaveInFlight = true;
@@ -572,10 +727,51 @@ async function driveSaveNow(){
     const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`);
     const meta = await metaRes.json();
     if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
+
     if(driveFileModifiedTime && meta.modifiedTime !== driveFileModifiedTime){
-      setDriveStatus('⚠ מישהו אחר שמר שינויים בינתיים - רענן את הדף לפני שממשיכים לערוך, כדי לא לדרוס אותם');
-      return;
+      /* Someone else saved since our last load/save - merge instead of blocking (01.10.2026:
+         replaces the old "refresh and lose your edit" behaviour after a real collision). */
+      const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+      if(!contentRes.ok) throw new Error('שגיאה בקריאת הגרסה העדכנית מ-Drive לצורך מיזוג');
+      const remote = await contentRes.json();
+      const base = baseSnapshot || remote; // no base yet (shouldn't normally happen) -> remote-as-base means every local difference counts as "our change", nothing is lost
+
+      const otherConflicts = [];
+      Object.keys(collectionAccessors).forEach(name=>{
+        const acc = collectionAccessors[name];
+        const {merged, conflicts} = mergeCollection(name, base[name], acc.get(), remote[name]);
+        acc.set(merged);
+        conflicts.forEach(c=> otherConflicts.push({collection:name, ...c}));
+      });
+      const {merged:mergedLogs, conflicts:logConflicts} = mergeCollection('logs', base.logs, logs, remote.logs);
+      logs = mergedLogs;
+      company = mergeRecord(base.company, company, remote.company, []).record;
+
+      activeLogMergeConflicts = null;
+      let blockingOwnLogConflict = false;
+      if(draft){
+        const mergedDraftRow = logs.find(l=>l.id===draft.id);
+        if(mergedDraftRow) draft = mergedDraftRow; // adopt the merged version so the open form reflects both sides' changes
+        const myConflict = logConflicts.find(c=>c.id===draft.id);
+        if(myConflict){ activeLogMergeConflicts = myConflict.fields; blockingOwnLogConflict = true; }
+      }
+      logConflicts.filter(c=> !draft || c.id!==draft.id).forEach(c=> otherConflicts.push({collection:'logs', ...c}));
+      if(otherConflicts.length){
+        toast(`מוזגו שינויים אוטומטית - ${otherConflicts.length} פריט/ים נערכו גם ע"י מישהו אחר (הגרסה שלך נשמרה עבורם)`);
+      }
+
+      if(blockingOwnLogConflict){
+        /* Don't write back yet - the conflicting field(s) on the OPEN log need the user's own
+           choice first (see resolveLogMergeConflict in renderDailyLog), otherwise saving now
+           would silently pick "local" for them, exactly the silent-overwrite this is meant to
+           avoid. Everything else above is already merged into local state either way, so it
+           isn't lost - it'll go out on the next successful save. */
+        setDriveStatus('⚠ יש התנגשות בשדה שאתה עורך כרגע - נא לבחור ערך למטה לפני שממשיכים');
+        render();
+        return;
+      }
     }
+
     const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime`, {
       method:'PATCH',
       headers:{ 'Content-Type':'application/json' },
@@ -584,6 +780,7 @@ async function driveSaveNow(){
     const putJson = await putRes.json();
     if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
     driveFileModifiedTime = putJson.modifiedTime;
+    baseSnapshot = snapshotPayload();
     setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
   }catch(e){
     setDriveStatus('⚠ שגיאת שמירה ל-Drive: ' + e.message);
@@ -591,6 +788,101 @@ async function driveSaveNow(){
     driveSaveInFlight = false;
     if(driveSavePending){ driveSavePending = false; driveSaveNow(); }
   }
+}
+/* Called from the conflict panel (renderDailyLog) when the user picks a value for one
+   conflicting field on the log they currently have open - either a plain field (ref={field}) or
+   one field of one row inside one of the log's own lists (ref={field, rowId, rowField}, field
+   being e.g. "execution"). Removes just that one conflict and applies the chosen value to the
+   live draft; once the list is empty the next autosave/save goes through normally. */
+function resolveLogMergeConflict(ref, chosenValue){
+  if(!activeLogMergeConflicts) return;
+  if(ref.rowId){
+    const row = (draft[ref.field]||[]).find(r=>r.id===ref.rowId);
+    if(row) row[ref.rowField] = chosenValue;
+    activeLogMergeConflicts = activeLogMergeConflicts.map(c=>{
+      if(c.field!==ref.field || !c.rowConflicts) return c;
+      const rowConflicts = c.rowConflicts
+        .map(rc=> rc.id!==ref.rowId ? rc : {...rc, fields: rc.fields.filter(f=>f.field!==ref.rowField)})
+        .filter(rc=>rc.fields.length>0);
+      return {...c, rowConflicts};
+    }).filter(c=> !c.rowConflicts || c.rowConflicts.length>0);
+  } else {
+    draft[ref.field] = chosenValue;
+    activeLogMergeConflicts = activeLogMergeConflicts.filter(c=>c.field!==ref.field);
+  }
+  scheduleAutosave();
+  render();
+}
+const LOG_FIELD_LABELS = {
+  weather:'מזג אוויר', companyEmployees:'עובדי חברה', notes:'הערות', signedBy:'נחתם ע"י', signedAt:'נחתם בתאריך',
+  siteManagerAtDate:'מנהל עבודה', date:'תאריך', projectId:'פרויקט', subProjectId:'תת-פרויקט', serialNumber:'מספר סידורי',
+  attendance:'נוכחות קבלני משנה', equipment:'כלי צמ"ה', execution:'תיעוד ביצוע', photos:'תיעוד צילומי', visitors:'ביקורים באתר',
+  exceptions:'חריגים', planning:'תכנון עבודה עתידית', dailyWork:'פירוט יומיות', ordersPlaced:'הזמנות שבוצעו', orders:'הזמנות שהתקבלו',
+  contractorId:'קבלן', crewId:'קבוצה', workers:'מספר פועלים', description:'תיאור', locationId:'מיקום', type:'סוג', count:'כמות',
+  name:'שם', org:'ארגון', purpose:'מטרה', instructions:'הנחיות', supplier:'ספק', days:'ימים', hours:'שעות', caption:'כיתוב'
+};
+function fieldLabel(f){ return LOG_FIELD_LABELS[f] || f; }
+function describeConflictValue(field, value){
+  if(value==null || value==='') return '(ריק)';
+  if(field==='contractorId'){ const c=contractors.find(x=>x.id===value); return c?c.name:value; }
+  if(field==='locationId'){ const l=locations.find(x=>x.id===value); return l?l.name:value; }
+  if(field==='crewId'){ const c=crews.find(x=>x.id===value); return c?c.name:value; }
+  if(field==='projectId'){ const p=projects.find(x=>x.id===value); return p?p.name:value; }
+  if(typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+/* Builds the conflict-resolution panel shown at the top of the daily log form when
+   activeLogMergeConflicts is non-empty for the log currently open. Each row offers both sides'
+   value as a button - clicking one resolves just that field/row-field. */
+function buildConflictPanelHtml(conflicts){
+  if(!conflicts || !conflicts.length) return '';
+  const pickBtn = (label, field, side, value, rowId, rowField)=> `
+    <button type="button" class="btn secondary small conflict-pick" data-field="${field}" data-side="${side}" ${rowId?`data-row-id="${rowId}" data-row-field="${rowField}"`:''}>${esc(label)}: ${esc(describeConflictValue(rowField||field, value))}</button>
+  `;
+  const rows = [];
+  conflicts.forEach(c=>{
+    if(c.rowConflicts){
+      c.rowConflicts.forEach(rc=>{
+        rc.fields.forEach(f=>{
+          rows.push(`<div class="conflict-row"><b>${esc(fieldLabel(c.field))} - ${esc(fieldLabel(f.field))}</b><div class="conflict-choice">
+            ${pickBtn('השאר את שלי', c.field, 'local', f.local, rc.id, f.field)}
+            ${pickBtn('קח את של האחר', c.field, 'remote', f.remote, rc.id, f.field)}
+          </div></div>`);
+        });
+      });
+    } else {
+      rows.push(`<div class="conflict-row"><b>${esc(fieldLabel(c.field))}</b><div class="conflict-choice">
+        ${pickBtn('השאר את שלי', c.field, 'local', c.local)}
+        ${pickBtn('קח את של האחר', c.field, 'remote', c.remote)}
+      </div></div>`);
+    }
+  });
+  return `
+    <div class="conflict-panel">
+      <h3>⚠ התנגשות - מישהו אחר ערך את אותו יומן בו-זמנית</h3>
+      <div class="hint" style="margin:0 0 4px;">לכל שדה: בחר אם להשאיר את מה שהזנת, או לקחת את מה שהאחר הזין. היומן לא יישמר עד שכל ההתנגשויות למטה ייפתרו.</div>
+      ${rows.join('')}
+    </div>
+  `;
+}
+function wireConflictPanel(card){
+  card.querySelectorAll('.conflict-pick').forEach(btn=>{
+    btn.onclick = ()=>{
+      const field = btn.dataset.field;
+      const side = btn.dataset.side;
+      const rowId = btn.dataset.rowId;
+      const rowField = btn.dataset.rowField;
+      const entry = activeLogMergeConflicts.find(c=>c.field===field);
+      if(!entry) return;
+      if(rowId){
+        const rc = entry.rowConflicts.find(r=>r.id===rowId);
+        const f = rc && rc.fields.find(x=>x.field===rowField);
+        if(f) resolveLogMergeConflict({field, rowId, rowField}, side==='local'?f.local:f.remote);
+      } else {
+        resolveLogMergeConflict({field}, side==='local'?entry.local:entry.remote);
+      }
+    };
+  });
 }
 function uid(prefix){ return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function toast(msg){
@@ -2112,7 +2404,7 @@ function flushAutosave(){
 
 function renderDailyLog(main, loadId){
   const isLoadingExisting = !!loadId;
-  if(loadId){ draft = JSON.parse(JSON.stringify(logs.find(l=>l.id===loadId))); editingExecContractorRows.clear(); editingPlanContractorRows.clear(); editingExcContractorRows.clear(); editingDailyWorkContractorRows.clear(); }
+  if(loadId){ draft = JSON.parse(JSON.stringify(logs.find(l=>l.id===loadId))); editingExecContractorRows.clear(); editingPlanContractorRows.clear(); editingExcContractorRows.clear(); editingDailyWorkContractorRows.clear(); activeLogMergeConflicts = null; }
   if(!draft){
     draft = newDraft();
     // A brand-new draft (e.g. first opening "יומן יומי" after reloading the app) defaults to
@@ -2145,6 +2437,7 @@ function renderDailyLog(main, loadId){
   card.className='card';
   card.innerHTML = `
     ${buildCompanyInfoLine()}
+    ${buildConflictPanelHtml(activeLogMergeConflicts)}
     <div class="log-title-row">
       <h2>יומן עבודה יומי ${draft.serialNumber?('מס\' '+formatSerial(draft.serialNumber)):'<span class="badge gray">טרם הונפק מספר</span>'} ${draft.signedBy? '<span class="badge">נחתם</span>':''}</h2>
       ${buildLogoImg()}
@@ -2265,6 +2558,7 @@ function renderDailyLog(main, loadId){
     <div class="hint">"שכפל מיומן קודם" מעתיק את נוכחות הקבלנים, כלי הצמ"ה, והמיקומים/קבלנים של תיעוד הביצוע מיומן ישן לפרויקט זה - כדי לחסוך הזנה חוזרת כשאותם קבלנים עובדים באותם מקומות. שדות הממצאים עצמם תמיד יישארו ריקים למילוי מחדש.</div>
   `;
   main.appendChild(card);
+  wireConflictPanel(card);
 
   document.getElementById('d_project').onchange = e=>{
     draft.projectId = e.target.value;
@@ -2302,14 +2596,14 @@ function renderDailyLog(main, loadId){
     autoGrowTextarea(e.target);
     scheduleAutosave();
   };
-  document.getElementById('addException').onclick = ()=>{ draft.exceptions.push({contractorId:'', description:''}); renderExceptionsRows(); scheduleAutosave(); };
-  document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({contractorId:'', description:''}); renderPlanningRows(); scheduleAutosave(); };
+  document.getElementById('addException').onclick = ()=>{ draft.exceptions.push({id:uid('exc'), contractorId:'', description:''}); renderExceptionsRows(); scheduleAutosave(); };
+  document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:''}); renderPlanningRows(); scheduleAutosave(); };
   document.getElementById('addDailyWork').onclick = ()=>{
-    draft.dailyWork.push({contractorId:'', days:'', hours:'', description:''});
+    draft.dailyWork.push({id:uid('dw'), contractorId:'', days:'', hours:'', description:''});
     renderDailyWorkRows(); scheduleAutosave();
   };
-  document.getElementById('addOrderPlaced').onclick = ()=>{ draft.ordersPlaced.push({supplier:'', equipment:''}); renderOrdersPlacedRows(); scheduleAutosave(); };
-  document.getElementById('addOrder').onclick = ()=>{ draft.orders.push({supplier:'', equipment:''}); renderOrdersRows(); scheduleAutosave(); };
+  document.getElementById('addOrderPlaced').onclick = ()=>{ draft.ordersPlaced.push({id:uid('op'), supplier:'', equipment:''}); renderOrdersPlacedRows(); scheduleAutosave(); };
+  document.getElementById('addOrder').onclick = ()=>{ draft.orders.push({id:uid('ord'), supplier:'', equipment:''}); renderOrdersRows(); scheduleAutosave(); };
   document.getElementById('notesField').oninput = e=>{
     draft.notes = e.target.value;
     document.getElementById('notesMirror').textContent = e.target.value;
@@ -2318,14 +2612,14 @@ function renderDailyLog(main, loadId){
     scheduleAutosave();
   };
 
-  document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({contractorId:'', workers:'', crewId:''}); renderAttendanceRows(); scheduleAutosave(); };
-  document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({type:'', count:''}); renderEquipmentRows(); scheduleAutosave(); };
+  document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({id:uid('att'), contractorId:'', workers:'', crewId:''}); renderAttendanceRows(); scheduleAutosave(); };
+  document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({id:uid('equip'), type:'', count:''}); renderEquipmentRows(); scheduleAutosave(); };
   document.getElementById('addExecution').onclick = ()=>{
     if(!draft.projectId){ toast('נא לבחור פרויקט תחילה'); return; }
-    draft.execution.push({locationId:'', contractorId:'', crewId:'', description:''});
+    draft.execution.push({id:uid('exec'), locationId:'', contractorId:'', crewId:'', description:''});
     renderExecutionRows(); scheduleAutosave();
   };
-  document.getElementById('addVisitor').onclick = ()=>{ draft.visitors.push({name:'', org:'', purpose:'', instructions:''}); renderVisitorRows(); scheduleAutosave(); };
+  document.getElementById('addVisitor').onclick = ()=>{ draft.visitors.push({id:uid('visitor'), name:'', org:'', purpose:'', instructions:''}); renderVisitorRows(); scheduleAutosave(); };
 
   document.getElementById('photoInput').onchange = async (e)=>{
     const files = Array.from(e.target.files);
@@ -2335,7 +2629,7 @@ function renderDailyLog(main, loadId){
     for(const f of files.slice(0, room)){
       try{
         const dataUrl = await compressImage(f, 1000, 0.65);
-        draft.photos.push({ caption:'', dataUrl });
+        draft.photos.push({ id:uid('photo'), caption:'', dataUrl });
       }catch(err){ failed.push(f.name); }
     }
     if(failed.length) toast(`לא הועלו (לא תמונות נתמכות): ${failed.join(', ')}`);
@@ -2346,6 +2640,7 @@ function renderDailyLog(main, loadId){
   };
 
   document.getElementById('saveLog').onclick = ()=>{
+    if(activeLogMergeConflicts && activeLogMergeConflicts.length){ toast('יש לפתור קודם את ההתנגשויות המסומנות למעלה'); return; }
     if(!draft.projectId){ toast('נא לבחור פרויקט'); return; }
     if(!draft.date){ toast('נא לבחור תאריך'); return; }
     if(findConflictingLog(draft.projectId, draft.subProjectId, draft.date, draft.id)){
@@ -2377,7 +2672,7 @@ function renderDailyLog(main, loadId){
   };
   document.getElementById('printLog').onclick = ()=>{ window.print(); };
   document.getElementById('saveLogPdf').onclick = ()=>{ window.print(); };
-  document.getElementById('newLog').onclick = ()=>{ flushAutosave(); draft = newDraft(); render(); };
+  document.getElementById('newLog').onclick = ()=>{ flushAutosave(); draft = newDraft(); activeLogMergeConflicts = null; render(); };
 
   document.getElementById('cloneLogBtn').onclick = ()=>{
     if(!draft.projectId){ toast('נא לבחור פרויקט תחילה'); return; }
@@ -2398,9 +2693,9 @@ function renderDailyLog(main, loadId){
     if(draftHasContent()){
       if(!confirm('השכפול יחליף את נוכחות הקבלנים, כלי הצמ"ה ורישומי תיעוד הביצוע (מיקום+קבלן) שכבר הוזנו בטופס זה, בנתונים מהיומן שנבחר. להמשיך?')) return;
     }
-    draft.attendance = (source.attendance||[]).map(a=>({contractorId:a.contractorId||'', workers:a.workers||'', crewId:a.crewId||''}));
-    draft.equipment = (source.equipment||[]).map(e=>({type:e.type||'', count:e.count||''}));
-    draft.execution = (source.execution||[]).map(ex=>({locationId:ex.locationId||'', contractorId:ex.contractorId||'', location:ex.location||'', description:''}));
+    draft.attendance = (source.attendance||[]).map(a=>({id:uid('att'), contractorId:a.contractorId||'', workers:a.workers||'', crewId:a.crewId||''}));
+    draft.equipment = (source.equipment||[]).map(e=>({id:uid('equip'), type:e.type||'', count:e.count||''}));
+    draft.execution = (source.execution||[]).map(ex=>({id:uid('exec'), locationId:ex.locationId||'', contractorId:ex.contractorId||'', location:ex.location||'', description:''}));
     editingExecContractorRows.clear();
     document.getElementById('cloneLogPicker').style.display = 'none';
     toast('שוכפלו נוכחות, כלי צמ"ה ומיקומי/קבלני ביצוע - נא למלא את שדות הממצאים');
@@ -2662,7 +2957,7 @@ function renderExecutionRows(){
   wrap.querySelectorAll('.add-contractor-btn').forEach(el=>el.onclick = e=>{
     const indices = e.target.dataset.indices.split(',').map(Number);
     const locationId = draft.execution[indices[0]].locationId;
-    draft.execution.push({locationId, contractorId:'', crewId:'', description:''});
+    draft.execution.push({id:uid('exec'), locationId, contractorId:'', crewId:'', description:''});
     renderExecutionRows();
     scheduleAutosave();
   });
@@ -5120,6 +5415,7 @@ async function loadOrCreateDriveFile(){
     driveFileId = createJson.id;
     driveFileModifiedTime = createJson.modifiedTime;
   }
+  baseSnapshot = snapshotPayload(); // common ancestor for the next save-time merge starts here
 }
 </script>
 </body>
