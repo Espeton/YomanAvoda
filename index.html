@@ -3887,7 +3887,10 @@ function datesInRange(from, to){
 /* ===================== REQ-011/012: Reports ===================== */
 function renderReport(main){
   const card = document.createElement('div');
-  card.className='card';
+  // no-print: this is just the report-TYPE picker, not part of any report's own content - left
+  // unmarked it printed as its own near-blank page 1 ahead of the actual report (01.10.2026
+  // report: "דוח מטריצת טולבוקס - הדף הראשון לא צריך בכלל").
+  card.className='card no-print';
   card.innerHTML = `
     <h2>דוחות</h2>
     <div class="field">
