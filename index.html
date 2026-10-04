@@ -339,6 +339,10 @@
   .tbx-expired-banner{background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
   .tbx-expired-banner summary{cursor:pointer; font-weight:bold;}
   .tbx-expired-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
+  .badge.soon{background:#EAB308; color:#422006; font-size:9px; margin-inline-start:2px;}
+  .tbx-soon-banner{background:#FEFCE8; border:1px solid #FDE047; color:#713F12; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
+  .tbx-soon-banner summary{cursor:pointer; font-weight:bold;}
+  .tbx-soon-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
   .badge.ok{background:#2F855A;}
   .badge.warn{background:#B7791F;}
   .badge.danger{background:#C53030;}
@@ -936,6 +940,21 @@ function workerExpiryIssues(w, refDate){
   const out = [];
   if(w.visaExpiry && w.visaExpiry < refDate) out.push({label:'ויזה', short:'ויזה פגה', date:w.visaExpiry});
   if(w.heightExpiry && w.heightExpiry < refDate) out.push({label:'אישור עבודה בגובה', short:'גובה פג', date:w.heightExpiry});
+  return out;
+}
+/* Early warning (04.10.2026): documents that expire within the next EXPIRY_SOON_DAYS days from
+   refDate, inclusive of refDate itself (expiring today is still valid, but it's the last day). */
+const EXPIRY_SOON_DAYS = 7;
+function addDaysStr(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m-1, d+n);
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+}
+function workerExpirySoon(w, refDate){
+  const limit = addDaysStr(refDate, EXPIRY_SOON_DAYS);
+  const out = [];
+  if(w.visaExpiry && w.visaExpiry >= refDate && w.visaExpiry <= limit) out.push({label:'ויזה', short:'ויזה פגה בקרוב', date:w.visaExpiry});
+  if(w.heightExpiry && w.heightExpiry >= refDate && w.heightExpiry <= limit) out.push({label:'אישור עבודה בגובה', short:'גובה פג בקרוב', date:w.heightExpiry});
   return out;
 }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -3644,6 +3663,7 @@ function renderToolboxMatrix(){
   const rowEntries = []; // [{workerId, crewId}] - one per rendered worker row, for totals recompute
   let rowsHtml = '';
   const expiredWorkers = new Map(); // workerId -> {worker, crewLabel, issues} - for the banner below
+  const soonWorkers = new Map(); // same shape, documents expiring within EXPIRY_SOON_DAYS
   contractorBlocks.forEach(({contractor:c, crewBlocks})=>{
     crewBlocks.forEach(({crew:cr, rows})=>{
       rowsHtml += `<tr class="tbx-group-row" data-crew-block="${cr.id}"><td colspan="${numDays+4}">${esc(c.name)} - ${esc(cr.name)}${cr.description?(' ('+esc(cr.description)+')'):''}</td></tr>`;
@@ -3652,7 +3672,10 @@ function renderToolboxMatrix(){
         const isInactive = w.active===false;
         const expIssues = isInactive ? [] : workerExpiryIssues(w, todayStr());
         if(expIssues.length && !expiredWorkers.has(w.id)) expiredWorkers.set(w.id, {worker:w, crewLabel:`${c.name} - ${cr.name}`, issues:expIssues});
-        const expBadges = expIssues.map(i=>` <span class="badge expired no-print" title="${esc(i.label)} פג תוקף ב-${esc(fmtDate(i.date))}">${esc(i.short)}</span>`).join('');
+        const soonIssues = isInactive ? [] : workerExpirySoon(w, todayStr());
+        if(soonIssues.length && !soonWorkers.has(w.id)) soonWorkers.set(w.id, {worker:w, crewLabel:`${c.name} - ${cr.name}`, issues:soonIssues});
+        const expBadges = expIssues.map(i=>` <span class="badge expired no-print" title="${esc(i.label)} פג תוקף ב-${esc(fmtDate(i.date))}">${esc(i.short)}</span>`).join('')
+          + soonIssues.map(i=>` <span class="badge soon no-print" title="${esc(i.label)} פג תוקף ב-${esc(fmtDate(i.date))}">${esc(i.short)}</span>`).join('');
         let cells = '';
         days.forEach(d=>{
           const satCls = saturdays.has(d) ? ' tbx-saturday' : '';
@@ -3684,8 +3707,16 @@ function renderToolboxMatrix(){
         `<li><b>${esc(w.name||w.idNumber||'')}</b> (${esc(w.idNumber||'—')}) · ${esc(crewLabel)}: ${issues.map(i=>`${esc(i.label)} פג ב-${esc(fmtDate(i.date))}`).join(', ')}</li>`
       ).join('')}</ul>
     </details>`;
+  const soonBannerHtml = soonWorkers.size===0 ? '' : `
+    <details class="tbx-soon-banner no-print" open>
+      <summary>⚠ ${soonWorkers.size} פועלים עם מסמך שיפוג בתוך ${EXPIRY_SOON_DAYS} ימים</summary>
+      <ul>${[...soonWorkers.values()].map(({worker:w, crewLabel, issues})=>
+        `<li><b>${esc(w.name||w.idNumber||'')}</b> (${esc(w.idNumber||'—')}) · ${esc(crewLabel)}: ${issues.map(i=>`${esc(i.label)} יפוג ב-${esc(fmtDate(i.date))}`).join(', ')}</li>`
+      ).join('')}</ul>
+    </details>`;
   body.innerHTML = `
     ${expiredBannerHtml}
+    ${soonBannerHtml}
     <div class="tbx-matrix-wrap">
       <table class="tbx-matrix">
         <thead><tr><th class="tbx-serial-cell">מס"ד</th><th class="tbx-id-cell">ת.ז / דרכון</th><th class="tbx-name-cell">שם</th>${dayHeaderCells}<th>סה"כ</th></tr></thead>
