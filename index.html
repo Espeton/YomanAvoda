@@ -260,6 +260,14 @@
   .photo-thumb{position:relative; width:110px;}
   .photo-thumb img{width:110px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--border);}
   .photo-thumb input{margin-top:4px; font-size:11px; padding:4px;}
+  /* Click-to-enlarge for every photo thumbnail (worker documents, licenses, daily-log photos) */
+  .photo-thumb img{cursor:zoom-in;}
+  #imgLightbox{position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.85); overflow:auto; display:none; padding:16px; text-align:center;}
+  #imgLightbox img{max-width:100%; max-height:calc(100vh - 32px); object-fit:contain; cursor:zoom-in; border-radius:4px; background:#fff;}
+  #imgLightbox img.natural{max-width:none; max-height:none; cursor:zoom-out;}
+  #imgLightbox .lb-close{position:fixed; top:10px; left:14px; z-index:2001; background:#fff; color:#111; border:none; border-radius:50%; width:36px; height:36px; font-size:20px; cursor:pointer; line-height:1;}
+  #imgLightbox .lb-hint{position:fixed; bottom:10px; left:0; right:0; color:#fff; font-size:12px; opacity:.8; pointer-events:none;}
+  @media print{ #imgLightbox{display:none !important;} }
   .photo-thumb .rm{position:absolute; top:-6px; left:-6px; background:#C53030; color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px; line-height:1;}
   .hint{font-size:11.5px; color:var(--muted); margin-top:4px;}
   .stamp-box{
@@ -458,6 +466,12 @@
 <main id="app"></main>
 
 <div class="toast" id="toast"></div>
+
+<div id="imgLightbox" class="no-print" role="dialog" aria-label="תצוגת תמונה">
+  <button type="button" class="lb-close" aria-label="סגור">×</button>
+  <img alt="">
+  <div class="lb-hint">לחיצה על התמונה - גודל מקורי / התאמה למסך · לחיצה בצד או Esc - סגירה</div>
+</div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -5276,6 +5290,25 @@ new MutationObserver(enableSpellcheckOnTextareas).observe(document.getElementByI
    CSS rule Chrome can reinterpret per page) sidesteps that bug entirely - it also makes the
    @media print rule for #topbar/#myProjectBar (still kept below, belt-and-suspenders) redundant
    in practice, but harmless to leave in. */
+/* Click any .photo-thumb image to view it enlarged (fit-to-screen first, click again for natural
+   pixel size, scrollable). One delegated listener, so thumbnails re-rendered via innerHTML anywhere
+   in the app (worker doc fields, licenses gallery, daily-log photos) work without any rewiring. */
+(function(){
+  const box = document.getElementById('imgLightbox');
+  const img = box.querySelector('img');
+  function close(){ box.style.display='none'; img.classList.remove('natural'); img.removeAttribute('src'); }
+  document.addEventListener('click', e=>{
+    const t = e.target;
+    if(t && t.tagName==='IMG' && t.closest('.photo-thumb')){
+      img.src = t.src; img.classList.remove('natural'); box.scrollTo(0,0); box.style.display='block';
+    }
+  });
+  img.addEventListener('click', e=>{ e.stopPropagation(); img.classList.toggle('natural'); });
+  box.addEventListener('click', close);
+  box.querySelector('.lb-close').addEventListener('click', e=>{ e.stopPropagation(); close(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && box.style.display==='block') close(); });
+})();
+
 window.addEventListener('beforeprint', ()=>{
   const bar = document.getElementById('topbar');
   if(bar){ bar.dataset.prevDisplay = bar.style.display; bar.style.display = 'none'; }
