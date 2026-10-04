@@ -3853,20 +3853,33 @@ let wcContractorId = '';
 let wcCrewId = '';
 let wcWorkerId = '';
 let wcMonth = todayStr().slice(0,7);
+let wcRefreshPrint = null; // set by renderWorkCardGrid while a worker's card is on screen
 
 function workCardEntry(workerId, date){
   return workCardEntries.find(e=>e.workerId===workerId && e.date===date);
 }
+/* Non-work day types that can be marked INSTEAD of check-in/out times (04.10.2026 request):
+   a day is either hours (timeIn/timeOut) or one of these, never both - picking a type clears the
+   times, and the time fields are locked while a type is set. "אחר" also takes a short free note. */
+const WC_DAY_TYPES = [
+  {id:'holiday', label:'חג'}, {id:'holidayEve', label:'ערב חג'}, {id:'vacation', label:'חופש'},
+  {id:'sick', label:'מחלה'}, {id:'other', label:'אחר'}
+];
+function wcDayTypeLabel(id){ const t = WC_DAY_TYPES.find(x=>x.id===id); return t ? t.label : ''; }
 function setWorkCardTime(workerId, date, field, value){
   let e = workCardEntry(workerId, date);
   if(!e){
-    if(!value) return; // nothing to create if both times are still empty
-    e = {id: uid('wc'), workerId, date, timeIn:'', timeOut:''};
+    if(!value) return; // nothing to create if everything is still empty
+    e = {id: uid('wc'), workerId, date, timeIn:'', timeOut:'', dayType:'', dayNote:''};
     workCardEntries.push(e);
   }
   e[field] = value;
-  if(!e.timeIn && !e.timeOut){
-    // Both cleared - drop the record entirely, matching toolboxRecords' lazy-creation philosophy.
+  if(field==='dayType'){
+    if(value){ e.timeIn = ''; e.timeOut = ''; }   // a marked day has no hours
+    else { e.dayNote = ''; }
+  }
+  if(!e.timeIn && !e.timeOut && !e.dayType){
+    // Everything cleared - drop the record entirely, matching toolboxRecords' lazy-creation philosophy.
     workCardEntries = workCardEntries.filter(x=>x.id!==e.id);
   }
   saveAll();
@@ -3887,15 +3900,17 @@ function timeToMinutes(hhmm){
 function computeWorkCardTotals(workerId, month){
   const numDays = toolboxDaysInMonth(month);
   let days = 0, minutes = 0;
+  const types = {}; // dayType id -> number of days marked that way this month
   for(let d=1; d<=numDays; d++){
     const date = `${month}-${String(d).padStart(2,'0')}`;
     const e = workCardEntry(workerId, date);
     if(!e) continue;
+    if(e.dayType){ types[e.dayType] = (types[e.dayType]||0) + 1; continue; }
     if(e.timeIn) days++;
     const inM = timeToMinutes(e.timeIn), outM = timeToMinutes(e.timeOut);
     if(inM!==null && outM!==null && outM>inM){ minutes += (outM-inM); }
   }
-  return {days, hours: minutes/60};
+  return {days, hours: minutes/60, types};
 }
 function renderWorkCard(main){
   const card = document.createElement('div');
@@ -3964,11 +3979,16 @@ function renderWorkCardGrid(){
     const date = `${wcMonth}-${String(d).padStart(2,'0')}`;
     const e = workCardEntry(w.id, date);
     const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
+    const dt = e && e.dayType ? e.dayType : '';
     return `
       <tr>
         <td class="wc-day-cell"><div>${d}</div><div class="tbx-dow">${dow}</div></td>
-        <td><input type="time" class="wc_in" data-date="${date}" value="${e?esc(e.timeIn||''):''}"></td>
-        <td><input type="time" class="wc_out" data-date="${date}" value="${e?esc(e.timeOut||''):''}"></td>
+        <td><input type="time" class="wc_in" data-date="${date}" value="${e?esc(e.timeIn||''):''}" ${dt?'disabled':''}></td>
+        <td><input type="time" class="wc_out" data-date="${date}" value="${e?esc(e.timeOut||''):''}" ${dt?'disabled':''}></td>
+        <td>
+          <select class="wc_type" data-date="${date}"><option value="">— שעות —</option>${WC_DAY_TYPES.map(t=>`<option value="${t.id}" ${dt===t.id?'selected':''}>${t.label}</option>`).join('')}</select>
+          <input class="wc_note" data-date="${date}" placeholder="פירוט (אחר)" value="${e?esc(e.dayNote||''):''}" style="margin-top:3px; ${dt==='other'?'':'display:none;'}">
+        </td>
       </tr>
     `;
   }).join('');
@@ -3981,11 +4001,23 @@ function renderWorkCardGrid(){
       const date = `${wcMonth}-${String(d).padStart(2,'0')}`;
       const e = workCardEntry(w.id, date);
       const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
-      out += `<tr><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+      if(e && e.dayType){
+        const lbl = wcDayTypeLabel(e.dayType) + (e.dayType==='other' && e.dayNote ? ': '+e.dayNote : '');
+        out += `<tr><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
+      } else {
+        out += `<tr><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+      }
     }
     return out;
   }
   const halfSplit = Math.ceil(numDays/2);
+  const printHalvesHtml = ()=> `
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(1, halfSplit)}</tbody></table>
+      </div>
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(halfSplit+1, numDays)}</tbody></table>
+      </div>`;
 
   body.innerHTML = `
     ${buildPrintHeader()}
@@ -3996,26 +4028,24 @@ function renderWorkCardGrid(){
     </div>
     <div class="tbx-matrix-wrap wc-onscreen-only" style="max-height:60vh;">
       <table class="log-table wc-table">
-        <colgroup><col style="width:70px"><col><col></colgroup>
-        <thead><tr><th>יום</th><th>שעת כניסה</th><th>שעת יציאה</th></tr></thead>
+        <colgroup><col style="width:70px"><col><col><col style="width:170px"></colgroup>
+        <thead><tr><th>יום</th><th>שעת כניסה</th><th>שעת יציאה</th><th>או סימון יום</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div class="wc-print-wrap">
-      <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(1, halfSplit)}</tbody></table>
-      </div>
-      <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(halfSplit+1, numDays)}</tbody></table>
-      </div>
-    </div>
+    <div class="wc-print-wrap">${printHalvesHtml()}</div>
     <div class="grid grid-3" style="margin-top:10px;">
       <div class="field"><label>ימים</label><div class="readonly-field" id="wc_totalDays">0</div></div>
       <div class="field"><label>סה"כ שעות</label><div class="readonly-field" id="wc_totalHours">0</div></div>
       <div class="row-actions" style="align-items:flex-end;"><button class="btn secondary" id="wc_pdf">ייצוא ל-PDF (הדפסה)</button></div>
     </div>
+    <div class="field" id="wc_typeSummaryWrap" style="margin-top:4px;"><label>ימים מסומנים (חג / חופש / מחלה...)</label><div class="readonly-field" id="wc_typeSummary">—</div></div>
   `;
 
+  // The print tables above are static HTML built at render time - rebuilt from the live data right
+  // before printing (see the beforeprint handler), otherwise hours/marks entered after this render
+  // wouldn't show up on paper.
+  wcRefreshPrint = ()=>{ const wrap = body.querySelector('.wc-print-wrap'); if(wrap) wrap.innerHTML = printHalvesHtml(); };
   document.getElementById('wc_month').onchange = e=>{ if(e.target.value){ wcMonth = e.target.value; renderWorkCardGrid(); } };
   document.getElementById('wc_pdf').onclick = ()=> window.print();
   body.querySelectorAll('.wc_in').forEach(el=>{
@@ -4023,6 +4053,29 @@ function renderWorkCardGrid(){
   });
   body.querySelectorAll('.wc_out').forEach(el=>{
     el.onchange = e=>{ setWorkCardTime(w.id, e.target.dataset.date, 'timeOut', e.target.value); recomputeWorkCardTotals(w.id); };
+  });
+  // Day type (חג / ערב חג / חופש / מחלה / אחר): updates just this row in place - a full re-render
+  // would reset the scroll position of the month list.
+  body.querySelectorAll('.wc_type').forEach(el=>{
+    el.onchange = e=>{
+      const date = e.target.dataset.date, val = e.target.value;
+      const existing = workCardEntry(w.id, date);
+      if(val && existing && (existing.timeIn || existing.timeOut)){
+        if(!confirm('ביום הזה כבר הוזנו שעות כניסה/יציאה. סימון היום יחליף אותן (השעות יימחקו). להמשיך?')){
+          e.target.value = existing.dayType || ''; return;
+        }
+      }
+      setWorkCardTime(w.id, date, 'dayType', val);
+      const tr = e.target.closest('tr');
+      tr.querySelectorAll('.wc_in, .wc_out').forEach(inp=>{ inp.disabled = !!val; if(val) inp.value = ''; });
+      const note = tr.querySelector('.wc_note');
+      note.style.display = val==='other' ? '' : 'none';
+      if(val!=='other') note.value = '';
+      recomputeWorkCardTotals(w.id);
+    };
+  });
+  body.querySelectorAll('.wc_note').forEach(el=>{
+    el.onchange = e=>{ setWorkCardTime(w.id, e.target.dataset.date, 'dayNote', e.target.value.trim()); };
   });
   recomputeWorkCardTotals(w.id);
 }
@@ -4032,6 +4085,11 @@ function recomputeWorkCardTotals(workerId){
   const hoursEl = document.getElementById('wc_totalHours');
   if(daysEl) daysEl.textContent = totals.days;
   if(hoursEl) hoursEl.textContent = (Math.round(totals.hours*100)/100).toString();
+  const typeEl = document.getElementById('wc_typeSummary');
+  if(typeEl){
+    const parts = WC_DAY_TYPES.filter(t=>totals.types[t.id]).map(t=>`${t.label}: ${totals.types[t.id]}`);
+    typeEl.textContent = parts.length ? parts.join(' · ') : '—';
+  }
 }
 
 /* ===================== REQ-010: Search ===================== */
@@ -5402,6 +5460,7 @@ new MutationObserver(enableSpellcheckOnTextareas).observe(document.getElementByI
 })();
 
 window.addEventListener('beforeprint', ()=>{
+  if(wcRefreshPrint && document.querySelector('#wc_body .wc-print-wrap')) wcRefreshPrint();
   const bar = document.getElementById('topbar');
   if(bar){ bar.dataset.prevDisplay = bar.style.display; bar.style.display = 'none'; }
 });
