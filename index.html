@@ -339,6 +339,12 @@
   .tbx-expired-banner{background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
   .tbx-expired-banner summary{cursor:pointer; font-weight:bold;}
   .tbx-expired-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
+  .presence-chip{position:relative; margin-inline-start:auto;}
+  .presence-btn{background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:14px; padding:4px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
+  .presence-btn:hover{background:rgba(255,255,255,.24);}
+  .presence-pop{position:absolute; top:calc(100% + 6px); inset-inline-end:0; min-width:200px; max-height:50vh; overflow:auto; background:#fff; color:var(--text); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.2); padding:6px 4px; z-index:300; font-size:12.5px;}
+  .presence-row{padding:5px 10px; white-space:nowrap; display:flex; align-items:center; gap:6px;}
+  .presence-dot{width:8px; height:8px; border-radius:50%; background:#22C55E; flex:0 0 auto;}
   .badge.soon{background:#EAB308; color:#422006; font-size:9px; margin-inline-start:2px;}
   .tbx-soon-banner{background:#FEFCE8; border:1px solid #FDE047; color:#713F12; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
   .tbx-soon-banner summary{cursor:pointer; font-weight:bold;}
@@ -464,6 +470,7 @@
     <h1>יומן עבודה יומי — אתר בנייה</h1>
     <div class="sub">כלי עזר אישי לתיעוד ומעקב ביצוע · מסונכרן דרך Google Drive <span id="driveSaveStatus" class="hint" style="display:inline;"></span></div>
   </div>
+  <div id="presenceChip" class="presence-chip no-print" style="display:none;"></div>
   <button id="homeBtn" class="btn secondary small no-print" style="display:none;">⌂ חזרה לעמוד הראשי</button>
 </header>
 
@@ -764,11 +771,11 @@ async function driveSaveNow(){
   if(driveSaveInFlight){ driveSavePending = true; return; }
   driveSaveInFlight = true;
   try{
-    const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime`);
+    const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime,headRevisionId`);
     const meta = await metaRes.json();
     if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
 
-    if(driveFileModifiedTime && meta.modifiedTime !== driveFileModifiedTime){
+    if(driveFileModifiedTime && driveVersion(meta) !== driveFileModifiedTime){
       /* Someone else saved since our last load/save - merge instead of blocking (01.10.2026:
          replaces the old "refresh and lose your edit" behaviour after a real collision). */
       const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
@@ -813,14 +820,14 @@ async function driveSaveNow(){
       }
     }
 
-    const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime`, {
+    const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime,headRevisionId`, {
       method:'PATCH',
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify(buildFullPayload())
     });
     const putJson = await putRes.json();
     if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
-    driveFileModifiedTime = putJson.modifiedTime;
+    driveFileModifiedTime = driveVersion(putJson);
     baseSnapshot = snapshotPayload();
     setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
   }catch(e){
@@ -1392,6 +1399,8 @@ function render(){
   main.style.paddingBottom = main.querySelector('.card.fill-screen') ? '8px' : '';
   fitFillScreenCards();
   initSearchableSelects(main);
+  // Moving to another project/screen should reach the others within seconds, not at the next 30s beat
+  if(presenceMe && currentPresenceProjectId() !== presenceLastProject && Date.now() - presenceLastBeatAt > 3000) presenceBeat();
 }
 // Stretches each .card.fill-screen from wherever it starts on the page down to the bottom edge of the window
 // (measured, not a hard-coded reserve), so its scrolling list gets the maximum height that still fits on screen.
@@ -5411,6 +5420,106 @@ let driveFileId = null;
 let driveFileModifiedTime = null;
 let tokenRefreshTimer = null;
 
+/* Concurrency token for the shared data file: headRevisionId changes only when the file's
+   CONTENT is rewritten, whereas modifiedTime also moves on metadata-only edits - and the presence
+   heartbeats below are exactly that (they only touch appProperties). Using modifiedTime alone
+   would make every heartbeat from anyone look like "someone saved", triggering a pointless
+   merge cycle on every one of everyone else's saves. Falls back to modifiedTime if Drive ever
+   omits headRevisionId (then presence just causes harmless extra merges, never lost data). */
+function driveVersion(o){ return (o && (o.headRevisionId || o.modifiedTime)) || null; }
+
+/* ===================== Presence: who else is in the app right now (04.10.2026) =====================
+   Each signed-in browser writes ONE key into the shared data file's Drive appProperties
+   ("u<google id>" -> "timestamp|projectId|name") every 30s while the tab is visible, and reads all
+   keys back. appProperties - not the data file's content and not a second file - on purpose:
+   per-key patches can't collide with each other or with real saves, and there's no extra file to
+   share with everyone. An entry counts as "online" for 90s after its last beat.
+   Visibility: the admin (ADMIN_EMAILS) sees everyone, everyone else only people currently on the
+   SAME project as them ("current project" = the one open in יומן יומי / טולבוקס, else their
+   personal default). Note this filtering is done in the browser - it is a convenience, not a
+   security boundary (anyone with the file open could read all entries). */
+const ADMIN_EMAILS = ['r0504433364@gmail.com'];
+const PRESENCE_BEAT_MS = 30000, PRESENCE_STALE_MS = 90000;
+let presenceMe = null;          // {key, name, email, isAdmin}
+let presenceOthers = [];        // [{name, projectId, ts}]
+let presenceBusy = false, presenceTimer = null, presenceLastProject = null, presenceLastBeatAt = 0, presencePopOpen = false;
+function presenceTruncate(s, maxBytes){
+  s = String(s||'').replace(/\|/g,' ').trim();
+  const enc = new TextEncoder();
+  while(s && enc.encode(s).length > maxBytes) s = s.slice(0,-1);
+  return s;
+}
+function currentPresenceProjectId(){
+  if(activeTab==='dailylog' && draft && draft.projectId) return draft.projectId;
+  if(activeTab==='toolbox' && toolboxProjectId) return toolboxProjectId;
+  const dp = getDefaultProject();
+  return dp ? dp.id : '';
+}
+async function presenceInit(){
+  try{
+    const res = await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo');
+    if(!res.ok) return;
+    const u = await res.json();
+    if(!u.sub) return;
+    const email = (u.email||'').toLowerCase();
+    presenceMe = { key:'u'+String(u.sub).replace(/\D/g,'').slice(0,20), name: u.name || (email.split('@')[0]) || 'משתמש', email, isAdmin: ADMIN_EMAILS.includes(email) };
+    presenceBeat();
+    clearInterval(presenceTimer);
+    presenceTimer = setInterval(presenceBeat, PRESENCE_BEAT_MS);
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) presenceBeat(); });
+    window.addEventListener('pagehide', ()=>{
+      // best effort: drop our key so we vanish for others right away instead of after 90s
+      try{ fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=id`, {method:'PATCH', keepalive:true, headers:{Authorization:'Bearer '+accessToken,'Content-Type':'application/json'}, body:JSON.stringify({appProperties:{[presenceMe.key]:null}})}); }catch(e){}
+    });
+  }catch(e){ /* presence is best-effort */ }
+}
+async function presenceBeat(){
+  if(!presenceMe || presenceBusy || !driveFileId || document.hidden) return;
+  presenceBusy = true;
+  try{
+    const pid = currentPresenceProjectId();
+    presenceLastProject = pid; presenceLastBeatAt = Date.now();
+    const value = `${Date.now()}|${pid}|${presenceTruncate(presenceMe.name, 40)}`;
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=id`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({appProperties:{[presenceMe.key]: value}})
+    });
+    await presenceRefresh();
+  }catch(e){ /* never surface presence errors */ }
+  finally{ presenceBusy = false; }
+}
+async function presenceRefresh(){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=appProperties`);
+  if(!res.ok) return;
+  const props = (await res.json()).appProperties || {};
+  const now = Date.now(), myPid = currentPresenceProjectId();
+  const others = [];
+  Object.keys(props).forEach(k=>{
+    if(!/^u\d+$/.test(k) || k===presenceMe.key) return;
+    const [ts, pid, ...nm] = String(props[k]).split('|');
+    const t = +ts;
+    if(!t || now - t > PRESENCE_STALE_MS) return;
+    if(!presenceMe.isAdmin && (!myPid || pid !== myPid)) return;
+    others.push({name: nm.join('|') || 'משתמש', projectId: pid||'', ts:t});
+  });
+  presenceOthers = others;
+  renderPresenceChip();
+}
+function renderPresenceChip(){
+  const el = document.getElementById('presenceChip');
+  if(!el) return;
+  if(!presenceOthers.length){ el.style.display = 'none'; presencePopOpen = false; return; }
+  const label = presenceMe && presenceMe.isAdmin ? 'מחוברים' : 'בפרויקט איתך';
+  const rows = presenceOthers.map(o=>{
+    const proj = presenceMe && presenceMe.isAdmin ? ` · ${esc((projects.find(p=>p.id===o.projectId)||{}).name || 'ללא פרויקט')}` : '';
+    return `<div class="presence-row"><span class="presence-dot"></span>${esc(o.name)}${proj}</div>`;
+  }).join('');
+  el.style.display = '';
+  el.innerHTML = `<button type="button" class="presence-btn" id="presenceBtn">👥 ${presenceOthers.length} ${label}</button>
+    <div class="presence-pop" id="presencePop" style="display:${presencePopOpen?'block':'none'};">${rows}</div>`;
+  document.getElementById('presenceBtn').onclick = e=>{ e.stopPropagation(); presencePopOpen = !presencePopOpen; document.getElementById('presencePop').style.display = presencePopOpen?'block':'none'; };
+}
+document.addEventListener('click', ()=>{ if(presencePopOpen){ presencePopOpen = false; const p = document.getElementById('presencePop'); if(p) p.style.display='none'; } });
+
 function gateStatus(text){
   const el = document.getElementById('gateStatus');
   if(el) el.textContent = text;
@@ -5491,6 +5600,7 @@ async function onDriveSignIn(resp){
     document.querySelector('header').style.visibility = 'visible';
     renderNav();
     render();
+    presenceInit();
   }catch(e){
     gateStatus('שגיאה בטעינת הנתונים מ-Drive: ' + e.message);
   }
@@ -5502,13 +5612,13 @@ async function onDriveSignIn(resp){
    brand-new Drive (nothing created yet) seeds an empty one instead of failing. */
 async function loadOrCreateDriveFile(){
   const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
-  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)`);
+  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime,headRevisionId)`);
   const listJson = await listRes.json();
   if(!listRes.ok) throw new Error(listJson.error ? listJson.error.message : 'שגיאה בחיפוש הקובץ ב-Drive');
 
   if(listJson.files && listJson.files.length>0){
     driveFileId = listJson.files[0].id;
-    driveFileModifiedTime = listJson.files[0].modifiedTime;
+    driveFileModifiedTime = driveVersion(listJson.files[0]);
     const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
     if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
     const data = await contentRes.json();
@@ -5521,7 +5631,7 @@ async function loadOrCreateDriveFile(){
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
       `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(buildFullPayload())}\r\n` +
       `--${boundary}--`;
-    const createRes = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime', {
+    const createRes = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime,headRevisionId', {
       method:'POST',
       headers:{ 'Content-Type':'multipart/related; boundary='+boundary },
       body
@@ -5529,7 +5639,7 @@ async function loadOrCreateDriveFile(){
     const createJson = await createRes.json();
     if(!createRes.ok) throw new Error(createJson.error ? createJson.error.message : 'שגיאה ביצירת הקובץ ב-Drive');
     driveFileId = createJson.id;
-    driveFileModifiedTime = createJson.modifiedTime;
+    driveFileModifiedTime = driveVersion(createJson);
   }
   baseSnapshot = snapshotPayload(); // common ancestor for the next save-time merge starts here
 }
