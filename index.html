@@ -546,11 +546,25 @@ function runMigrations(){
      before this existed (01.10.2026 - needed so the save-time merge below can match "the same
      row" between two people's concurrent edits by id instead of by array position, which breaks
      the moment the two sides added/removed rows in different orders). */
-  const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
-  logs.forEach(l=>{
+  normalizeLogsForMerge(logs);
+}
+/* Makes a logs array safe for the merge engine: every nested row list really is an array (older
+   saved logs can still hold a legacy plain string in exceptions/planning, or lack a list
+   entirely - mergeRowsById crashed on those with "filter is not a function", 04.10.2026), and
+   every row has an id. Ids for rows that lack one are DETERMINISTIC (log id + list + position),
+   not random, so two browsers backfilling the same untouched legacy row - or this browser and a
+   remote payload saved by a not-yet-refreshed older version - agree on the id instead of
+   duplicating the row on merge. Also run on the remote/base payloads right before merging. */
+const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+function normalizeLogsForMerge(logsArr){
+  (logsArr||[]).forEach(l=>{
+    if(!l) return;
     LOG_ROW_FIELDS.forEach(f=>{
-      if(!Array.isArray(l[f])) return;
-      l[f].forEach(row=>{ if(row && !row.id) row.id = uid(f.slice(0,4)); });
+      if(!Array.isArray(l[f])){
+        const v = l[f];
+        l[f] = (typeof v === 'string' && v.trim() && (f==='exceptions'||f==='planning')) ? [{contractorId:'', description:v}] : [];
+      }
+      l[f].forEach((row,i)=>{ if(row && typeof row==='object' && !row.id) row.id = `${l.id||'log'}__${f}__${i}`; });
     });
   });
 }
@@ -627,6 +641,10 @@ function mergeRecord(base, local, remote, arrayFieldsById){
    never reach deepEqual-against-base, since there's nothing to compare. */
 function mergeRowsById(baseArr, localArr, remoteArr, mergeRowFn){
   mergeRowFn = mergeRowFn || ((b,l,r)=>mergeRecord(b,l,r,[]));
+  // Defensive: anything that isn't an array (missing, or a legacy value) counts as an empty list
+  baseArr = Array.isArray(baseArr) ? baseArr : [];
+  localArr = Array.isArray(localArr) ? localArr : [];
+  remoteArr = Array.isArray(remoteArr) ? remoteArr : [];
   const baseMap = new Map((baseArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
   const localMap = new Map((localArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
   const remoteMap = new Map((remoteArr||[]).filter(r=>r&&r.id).map(r=>[r.id,r]));
@@ -753,6 +771,7 @@ async function driveSaveNow(){
       if(!contentRes.ok) throw new Error('שגיאה בקריאת הגרסה העדכנית מ-Drive לצורך מיזוג');
       const remote = await contentRes.json();
       const base = baseSnapshot || remote; // no base yet (shouldn't normally happen) -> remote-as-base means every local difference counts as "our change", nothing is lost
+      normalizeLogsForMerge(remote.logs); normalizeLogsForMerge(base.logs); normalizeLogsForMerge(logs);
 
       const otherConflicts = [];
       Object.keys(collectionAccessors).forEach(name=>{
