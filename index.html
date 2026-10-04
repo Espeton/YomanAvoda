@@ -335,6 +335,10 @@
   .log-result .top{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;}
   .badge{background:var(--navy); color:#fff; font-size:11px; padding:2px 8px; border-radius:10px;}
   .badge.gray{background:#94A3B8;}
+  .badge.expired{background:#C53030; font-size:9px; margin-inline-start:2px;}
+  .tbx-expired-banner{background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
+  .tbx-expired-banner summary{cursor:pointer; font-weight:bold;}
+  .tbx-expired-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
   .badge.ok{background:#2F855A;}
   .badge.warn{background:#B7791F;}
   .badge.danger{background:#C53030;}
@@ -899,12 +903,21 @@ function wireConflictPanel(card){
   });
 }
 function uid(prefix){ return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
-function toast(msg){
+function toast(msg, ms){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.style.display = 'block';
   clearTimeout(window.__toastTimer);
-  window.__toastTimer = setTimeout(()=>{ t.style.display='none'; }, 2200);
+  window.__toastTimer = setTimeout(()=>{ t.style.display='none'; }, ms || 2200);
+}
+/* Visa / height-permit expiry check (01-04.10.2026 request): which of a worker's two dated
+   documents are already expired as of refDate (YYYY-MM-DD). A document with no date entered is
+   NOT flagged - only an entered date strictly before refDate counts. */
+function workerExpiryIssues(w, refDate){
+  const out = [];
+  if(w.visaExpiry && w.visaExpiry < refDate) out.push({label:'ויזה', short:'ויזה פגה', date:w.visaExpiry});
+  if(w.heightExpiry && w.heightExpiry < refDate) out.push({label:'אישור עבודה בגובה', short:'גובה פג', date:w.heightExpiry});
+  return out;
 }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function autoGrowTextarea(el){
@@ -3611,12 +3624,16 @@ function renderToolboxMatrix(){
 
   const rowEntries = []; // [{workerId, crewId}] - one per rendered worker row, for totals recompute
   let rowsHtml = '';
+  const expiredWorkers = new Map(); // workerId -> {worker, crewLabel, issues} - for the banner below
   contractorBlocks.forEach(({contractor:c, crewBlocks})=>{
     crewBlocks.forEach(({crew:cr, rows})=>{
       rowsHtml += `<tr class="tbx-group-row" data-crew-block="${cr.id}"><td colspan="${numDays+4}">${esc(c.name)} - ${esc(cr.name)}${cr.description?(' ('+esc(cr.description)+')'):''}</td></tr>`;
       rows.forEach(({worker:w, validDays}, idx)=>{
         rowEntries.push({workerId:w.id, crewId:cr.id});
         const isInactive = w.active===false;
+        const expIssues = isInactive ? [] : workerExpiryIssues(w, todayStr());
+        if(expIssues.length && !expiredWorkers.has(w.id)) expiredWorkers.set(w.id, {worker:w, crewLabel:`${c.name} - ${cr.name}`, issues:expIssues});
+        const expBadges = expIssues.map(i=>` <span class="badge expired no-print" title="${esc(i.label)} פג תוקף ב-${esc(fmtDate(i.date))}">${esc(i.short)}</span>`).join('');
         let cells = '';
         days.forEach(d=>{
           const satCls = saturdays.has(d) ? ' tbx-saturday' : '';
@@ -3626,7 +3643,7 @@ function renderToolboxMatrix(){
             cells += `<td class="tbx-cell tbx-cell-na${satCls}" title="הפועל לא היה משויך לקבוצה זו בתאריך זה">—</td>`;
           }
         });
-        rowsHtml += `<tr data-crew-block="${cr.id}" data-worker-idnum="${esc(w.idNumber||'')}"><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}${isInactive?' <span class="badge gray" style="font-size:9px;">לא פעיל</span>':''}</td>${cells}<td class="tbx-total-cell" data-worker-total="${w.id}__${cr.id}">0</td></tr>`;
+        rowsHtml += `<tr data-crew-block="${cr.id}" data-worker-idnum="${esc(w.idNumber||'')}"><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}${isInactive?' <span class="badge gray" style="font-size:9px;">לא פעיל</span>':''}${expBadges}</td>${cells}<td class="tbx-total-cell" data-worker-total="${w.id}__${cr.id}">0</td></tr>`;
       });
       const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total${saturdays.has(d)?' tbx-saturday':''}" data-crew-id="${cr.id}" data-day="${d}">0</td>`).join('');
       // Separate serial/id/name cells (not one colspan cell) - a colspan cell sized/positioned
@@ -3641,7 +3658,15 @@ function renderToolboxMatrix(){
   }).join('');
   const footerDayCells = days.map(d=>`<td class="tbx-day-footer${saturdays.has(d)?' tbx-saturday':''}" data-day-total="${d}">0</td>`).join('');
 
+  const expiredBannerHtml = expiredWorkers.size===0 ? '' : `
+    <details class="tbx-expired-banner no-print" open>
+      <summary>⚠ ${expiredWorkers.size} פועלים עם מסמך שפג תוקפו (נכון להיום)</summary>
+      <ul>${[...expiredWorkers.values()].map(({worker:w, crewLabel, issues})=>
+        `<li><b>${esc(w.name||w.idNumber||'')}</b> (${esc(w.idNumber||'—')}) · ${esc(crewLabel)}: ${issues.map(i=>`${esc(i.label)} פג ב-${esc(fmtDate(i.date))}`).join(', ')}</li>`
+      ).join('')}</ul>
+    </details>`;
   body.innerHTML = `
+    ${expiredBannerHtml}
     <div class="tbx-matrix-wrap">
       <table class="tbx-matrix">
         <thead><tr><th class="tbx-serial-cell">מס"ד</th><th class="tbx-id-cell">ת.ז / דרכון</th><th class="tbx-name-cell">שם</th>${dayHeaderCells}<th>סה"כ</th></tr></thead>
@@ -3658,6 +3683,14 @@ function renderToolboxMatrix(){
     cb.onchange = e=>{
       const wid = e.target.dataset.workerId;
       const d = +e.target.dataset.day;
+      if(e.target.checked){
+        // Warn (don't block) when ticking someone whose visa / height permit had already expired
+        // as of THAT day - judged by the day being marked, not today, so back-filling an earlier
+        // day when the document was still valid stays quiet.
+        const w = workers.find(x=>x.id===wid);
+        const issues = w ? workerExpiryIssues(w, toolboxDateStr(d)) : [];
+        if(issues.length) toast(`⚠ ${w.name||w.idNumber}: ${issues.map(i=>`${i.label} פג ב-${fmtDate(i.date)}`).join(', ')}`, 5000);
+      }
       toolboxTogglePresence(toolboxProjectId, toolboxDateStr(d), wid, e.target.checked);
       toolboxRecomputeTotals(days, rowEntries);
       const statusEl = document.getElementById('tbx_saveStatus');
