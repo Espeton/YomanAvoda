@@ -300,6 +300,12 @@
   .wc-table .wc-day-cell{font-weight:bold; background:#FAFBFC;}
   .wc-table .wc-day-cell .tbx-dow{font-size:9px; color:var(--muted); font-weight:normal; display:block;}
   .wc-table input[type=time]{width:100%;}
+  /* Saturdays (not a working day) are shaded blue, same family as the toolbox matrix's Saturday
+     column - on screen and in print (print-color-adjust so it prints without needing the
+     browser's "Background graphics" option ticked). */
+  .wc-table tr.wc-saturday td{background:#DBEAFE;}
+  .wc-table tr.wc-saturday td.wc-day-cell{background:#BFDBFE;}
+  .wc-print-half tr.wc-saturday td{background:#DBEAFE; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
   /* Print-only rendering of the work card: two half-month tables side by side (right side =
      first half of the month, left side = second half), matching the user's paper time-card
      layout, instead of the single long scrollable list used for on-screen editing (which
@@ -3980,8 +3986,9 @@ function renderWorkCardGrid(){
     const e = workCardEntry(w.id, date);
     const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
     const dt = e && e.dayType ? e.dayType : '';
+    const isSat = new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6;
     return `
-      <tr>
+      <tr${isSat?' class="wc-saturday"':''}>
         <td class="wc-day-cell"><div>${d}</div><div class="tbx-dow">${dow}</div></td>
         <td><input type="time" class="wc_in" data-date="${date}" value="${e?esc(e.timeIn||''):''}" ${dt?'disabled':''}></td>
         <td><input type="time" class="wc_out" data-date="${date}" value="${e?esc(e.timeOut||''):''}" ${dt?'disabled':''}></td>
@@ -4001,11 +4008,12 @@ function renderWorkCardGrid(){
       const date = `${wcMonth}-${String(d).padStart(2,'0')}`;
       const e = workCardEntry(w.id, date);
       const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
+      const satCls = new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6 ? ' class="wc-saturday"' : '';
       if(e && e.dayType){
         const lbl = wcDayTypeLabel(e.dayType) + (e.dayType==='other' && e.dayNote ? ': '+e.dayNote : '');
-        out += `<tr><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
+        out += `<tr${satCls}><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
       } else {
-        out += `<tr><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+        out += `<tr${satCls}><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
       }
     }
     return out;
