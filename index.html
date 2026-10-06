@@ -354,10 +354,16 @@
   .tbx-expired-banner{background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
   .tbx-expired-banner summary{cursor:pointer; font-weight:bold;}
   .tbx-expired-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
-  #driveProblemBar{display:none; position:fixed; top:0; left:0; right:0; z-index:3000; background:#B91C1C; color:#fff; padding:10px 16px; align-items:center; gap:10px; flex-wrap:wrap; font-size:13.5px; box-shadow:0 3px 12px rgba(0,0,0,.35);}
-  #driveProblemBar .dp-msg{flex:1 1 320px;}
-  #driveProblemBar .btn{background:#fff; color:#B91C1C; border:none;}
-  #driveProblemBar .btn.secondary{background:transparent; color:#fff; border:1px solid #fff;}
+  /* Modal: "החיבור ל-Drive פג / השמירה נכשלה" - full-screen dim backdrop + centered card */
+  #driveProblemBar{display:none; position:fixed; inset:0; z-index:3000; background:rgba(15,23,42,.72); align-items:center; justify-content:center; padding:16px;}
+  #driveProblemBar .dp-box{background:#fff; border-top:6px solid #B91C1C; border-radius:12px; max-width:480px; width:100%; padding:22px 24px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  #driveProblemBar .dp-icon{font-size:42px; line-height:1; color:#B91C1C;}
+  #driveProblemBar h2{margin:6px 0 8px; font-size:20px; color:#991B1B; border:none; padding:0;}
+  #driveProblemBar p{margin:6px 0; font-size:14.5px; color:var(--text);}
+  #driveProblemBar .dp-warn{background:#FEF2F2; border:1px solid #FCA5A5; border-radius:8px; padding:8px 10px; color:#991B1B;}
+  #driveProblemBar .dp-actions{display:flex; flex-direction:column; gap:8px; margin-top:14px;}
+  #driveProblemBar .dp-actions .btn{width:100%; font-size:15px;}
+  #driveProblemBar #dpFix{background:#B91C1C;}
   .presence-chip{position:relative; margin-inline-start:auto;}
   .presence-btn{background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:14px; padding:4px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
   .presence-btn:hover{background:rgba(255,255,255,.24);}
@@ -5726,26 +5732,48 @@ async function driveFetch(url, options={}){
 /* Loud, persistent warning for a Drive save that did NOT happen (the small header status text was
    too easy to miss). kind: 'auth' = needs one click to re-sign-in; anything else = plain retry.
    Always offers a local backup download of what's in memory. Cleared by the next successful save. */
+let dpDismissedUntil = 0;
 function showDriveProblem(kind, message){
+  // 06.10.2026: a modal dialog (centered, blocks the page behind it), not a bar - a bar was too easy
+  // to miss while someone is busy typing. Auth problems can't be dismissed (nothing is being saved
+  // until the user re-signs in); other errors can be closed and then stay quiet for 5 minutes
+  // (the 45s auto-retry keeps trying meanwhile).
+  if(kind!=='auth' && Date.now() < dpDismissedUntil) return;
   let bar = document.getElementById('driveProblemBar');
   if(!bar){
     bar = document.createElement('div');
     bar.id = 'driveProblemBar'; bar.className = 'no-print';
+    bar.setAttribute('role','alertdialog'); bar.setAttribute('aria-modal','true');
     document.body.appendChild(bar);
   }
-  bar.innerHTML = `<span class="dp-msg">⚠ ${esc(message)} <b>השינויים האחרונים עדיין לא נשמרו ב-Drive.</b></span>
-    <button type="button" class="btn small" id="dpFix">${kind==='auth' ? 'התחבר מחדש ושמור' : 'נסה לשמור שוב'}</button>
-    <button type="button" class="btn small secondary" id="dpBackup">הורד גיבוי של מה שבמסך</button>`;
+  bar.innerHTML = `<div class="dp-box">
+      <div class="dp-icon">⚠</div>
+      <h2>${kind==='auth' ? 'נדרש חיבור מחדש ל-Google Drive' : 'השמירה ל-Drive נכשלה'}</h2>
+      <p class="dp-msg">${esc(message)}</p>
+      <p class="dp-warn">השינויים האחרונים עדיין <b>לא נשמרו</b>. אל תסגור ואל תרענן את הדף לפני שהשמירה מצליחה.</p>
+      <div class="dp-actions">
+        <button type="button" class="btn" id="dpFix">${kind==='auth' ? 'התחבר מחדש ושמור' : 'נסה לשמור שוב'}</button>
+        <button type="button" class="btn secondary" id="dpBackup">הורד גיבוי של מה שבמסך</button>
+        ${kind==='auth' ? '' : '<button type="button" class="btn secondary" id="dpClose">סגור (ינסה שוב ברקע)</button>'}
+      </div>
+    </div>`;
   bar.style.display = 'flex';
+  if(!document.title.startsWith('⚠')) document.title = '⚠ ' + document.title;
   document.getElementById('dpBackup').onclick = downloadUnsavedBackup;
+  const closeBtn = document.getElementById('dpClose');
+  if(closeBtn) closeBtn.onclick = ()=>{ dpDismissedUntil = Date.now() + 5*60*1000; hideDriveProblem(); };
   document.getElementById('dpFix').onclick = ()=>{
     if(kind==='auth'){
       // called straight from the click, so the popup counts as user-initiated and isn't blocked
       requestFreshToken(120000).then(()=>{ hideDriveProblem(); saveAll(); }).catch(()=>{ toast('ההתחברות מחדש לא הושלמה - נסה שוב', 4000); });
     } else { hideDriveProblem(); saveAll(); }
   };
+  document.getElementById('dpFix').focus();
 }
-function hideDriveProblem(){ const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none'; }
+function hideDriveProblem(){
+  const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none';
+  if(document.title.startsWith('⚠ ')) document.title = document.title.slice(2);
+}
 function downloadUnsavedBackup(){
   const blob = new Blob([JSON.stringify(buildFullPayload())], {type:'application/json'});
   const a = document.createElement('a');
