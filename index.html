@@ -354,6 +354,10 @@
   .tbx-expired-banner{background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; border-radius:8px; padding:8px 14px; margin-bottom:10px; font-size:12.5px;}
   .tbx-expired-banner summary{cursor:pointer; font-weight:bold;}
   .tbx-expired-banner ul{margin:6px 0 2px; padding-inline-start:20px;}
+  #driveProblemBar{display:none; position:fixed; top:0; left:0; right:0; z-index:3000; background:#B91C1C; color:#fff; padding:10px 16px; align-items:center; gap:10px; flex-wrap:wrap; font-size:13.5px; box-shadow:0 3px 12px rgba(0,0,0,.35);}
+  #driveProblemBar .dp-msg{flex:1 1 320px;}
+  #driveProblemBar .btn{background:#fff; color:#B91C1C; border:none;}
+  #driveProblemBar .btn.secondary{background:transparent; color:#fff; border:1px solid #fff;}
   .presence-chip{position:relative; margin-inline-start:auto;}
   .presence-btn{background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:14px; padding:4px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
   .presence-btn:hover{background:rgba(255,255,255,.24);}
@@ -708,6 +712,21 @@ function mergeCollection(name, baseArr, localArr, remoteArr){
   return mergeRowsById(baseArr, localArr, remoteArr, rowMerger);
 }
 
+/* After a merge, keep the SAME JS objects the rest of the app is already holding (the worker being
+   edited, the open log, ...) instead of swapping in freshly built copies: copy the merged values
+   into the existing object by id. Without this, a form that had grabbed `editing = worker` before a
+   background merge went on mutating a detached object after it - "שמור שינויים" reported success
+   and nothing reached the payload (06.10.2026 report: height-expiry edit lost). */
+function adoptIdentity(oldArr, mergedArr){
+  const oldById = new Map((oldArr||[]).filter(r=>r && r.id).map(r=>[r.id, r]));
+  return mergedArr.map(m=>{
+    const o = m && m.id ? oldById.get(m.id) : null;
+    if(!o || o === m) return m;
+    Object.keys(o).forEach(k=>{ if(!(k in m)) delete o[k]; });
+    Object.assign(o, m);
+    return o;
+  });
+}
 function formatSerial(n){ return n ? String(n).padStart(3,'0') : ''; }
 function assignSerialIfNeeded(log){
   if(log.serialNumber) return;
@@ -750,11 +769,14 @@ function buildFullPayload(){
 let driveSaveTimer = null;
 let driveSaveInFlight = false;
 let driveSavePending = false;
+let driveDirty = false;     // changes exist that have not (yet) reached Drive
+let driveSaveSeq = 0;       // bumped by every saveAll - lets a finished save tell whether newer edits arrived meanwhile
 function setDriveStatus(text){
   const el = document.getElementById('driveSaveStatus');
   if(el) el.textContent = text ? (' · ' + text) : '';
 }
 function saveAll(){
+  driveDirty = true; driveSaveSeq++;
   setDriveStatus('שומר...');
   clearTimeout(driveSaveTimer);
   driveSaveTimer = setTimeout(driveSaveNow, 800);
@@ -785,6 +807,7 @@ let activeLogMergeConflicts = null;
 async function driveSaveNow(){
   if(driveSaveInFlight){ driveSavePending = true; return; }
   driveSaveInFlight = true;
+  const seqAtStart = driveSaveSeq;
   try{
     const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime,headRevisionId`);
     const meta = await metaRes.json();
@@ -803,11 +826,11 @@ async function driveSaveNow(){
       Object.keys(collectionAccessors).forEach(name=>{
         const acc = collectionAccessors[name];
         const {merged, conflicts} = mergeCollection(name, base[name], acc.get(), remote[name]);
-        acc.set(merged);
+        acc.set(adoptIdentity(acc.get(), merged));
         conflicts.forEach(c=> otherConflicts.push({collection:name, ...c}));
       });
       const {merged:mergedLogs, conflicts:logConflicts} = mergeCollection('logs', base.logs, logs, remote.logs);
-      logs = mergedLogs;
+      logs = adoptIdentity(logs, mergedLogs);
       company = mergeRecord(base.company, company, remote.company, []).record;
 
       activeLogMergeConflicts = null;
@@ -844,9 +867,12 @@ async function driveSaveNow(){
     if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
     driveFileModifiedTime = driveVersion(putJson);
     baseSnapshot = snapshotPayload();
+    if(driveSaveSeq === seqAtStart) driveDirty = false;   // nothing newer arrived while this write was in flight
+    driveAuthBroken = false; hideDriveProblem();
     setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
   }catch(e){
     setDriveStatus('⚠ שגיאת שמירה ל-Drive: ' + e.message);
+    showDriveProblem(e.auth ? 'auth' : 'error', e.auth ? e.message : ('שגיאת שמירה ל-Drive: ' + e.message));
   }finally{
     driveSaveInFlight = false;
     if(driveSavePending){ driveSavePending = false; driveSaveNow(); }
@@ -5573,7 +5599,7 @@ async function presenceInit(){
   }catch(e){ /* presence is best-effort */ }
 }
 async function presenceBeat(){
-  if(!presenceMe || presenceBusy || !driveFileId || document.hidden) return;
+  if(!presenceMe || presenceBusy || !driveFileId || document.hidden || driveAuthBroken) return;
   presenceBusy = true;
   try{
     const pid = currentPresenceProjectId();
@@ -5634,35 +5660,104 @@ function gateStatus(text){
    2) driveFetch (used for every Drive API call instead of a bare fetch) is a safety net: if a
       request still comes back 401 (clock drift, laptop asleep past the timer, etc.), it
       refreshes once and retries automatically, invisibly to the caller. */
-function requestFreshToken(){
-  return new Promise((resolve, reject)=>{
-    const prevCallback = tokenClient.callback;
+/* 06.10.2026 - data-loss bug: the silent refresh above can NEVER complete in some browsers.
+   requestAccessToken opens Google's auth popup, and a popup opened WITHOUT a user click is
+   blocked; GIS then reports it only through an error_callback we never registered, so the refresh
+   promise stayed pending FOREVER. driveSaveNow awaited it with driveSaveInFlight=true, so after
+   the first hour every later save silently never ran - the screen kept working, printing worked
+   (it reads memory), but nothing reached Drive and a reload lost everything entered since.
+   Now: error_callback is wired, every refresh has a timeout, one refresh at a time, and when a
+   refresh can't be done silently a loud red bar (see showDriveProblem) asks for ONE click -
+   a real user gesture, which is allowed to open the popup - and then saves what's waiting. */
+let tokenRefreshPromise = null;
+let pendingTokenError = null;
+let driveAuthBroken = false;
+function requestFreshToken(timeoutMs){
+  if(tokenRefreshPromise) return tokenRefreshPromise;
+  tokenRefreshPromise = new Promise((resolve, reject)=>{
+    let settled = false, timer = null;
+    const finish = (fn, val)=>{
+      if(settled) return;
+      settled = true; clearTimeout(timer);
+      tokenClient.callback = onDriveSignIn;      // always back to the sign-in handler, never to "whatever was set"
+      pendingTokenError = null; tokenRefreshPromise = null;
+      fn(val);
+    };
+    timer = setTimeout(()=>finish(reject, new Error('token refresh timed out')), timeoutMs || 20000);
+    pendingTokenError = (err)=> finish(reject, new Error('token refresh failed: ' + ((err && (err.type||err.message)) || 'unknown')));
     tokenClient.callback = (resp)=>{
-      tokenClient.callback = prevCallback;
-      if(resp.error){ reject(new Error(resp.error_description || resp.error)); return; }
+      if(resp.error){ finish(reject, new Error(resp.error_description || resp.error)); return; }
       accessToken = resp.access_token;
       if(resp.expires_in) scheduleTokenRefresh(resp.expires_in);
-      resolve(accessToken);
+      driveAuthBroken = false;
+      finish(resolve, accessToken);
     };
-    tokenClient.requestAccessToken({prompt:''});
+    try{ tokenClient.requestAccessToken({prompt:''}); }catch(e){ finish(reject, e); }
   });
+  return tokenRefreshPromise;
 }
 function scheduleTokenRefresh(expiresInSeconds){
   clearTimeout(tokenRefreshTimer);
   const ms = Math.max((expiresInSeconds - 300) * 1000, 30000);
-  tokenRefreshTimer = setTimeout(()=>{ requestFreshToken().catch(()=>{}); }, ms);
+  tokenRefreshTimer = setTimeout(()=>{
+    requestFreshToken(20000).catch(()=>{
+      // silent renewal wasn't possible (popup blocked without a click) - ask for a click BEFORE saves start failing
+      driveAuthBroken = true;
+      showDriveProblem('auth', 'החיבור ל-Google Drive עומד לפוג. לחץ כדי לחדש אותו - כך שום שינוי לא יאבד.');
+    });
+  }, ms);
 }
 async function driveFetch(url, options={}){
   const opts = Object.assign({}, options, { headers: Object.assign({}, options.headers, { Authorization:'Bearer '+accessToken }) });
   let res = await fetch(url, opts);
   if(res.status === 401){
-    try{ await requestFreshToken(); }
-    catch(e){ return res; } // refresh itself failed (e.g. revoked access) - surface the original 401 to the caller
+    try{ await requestFreshToken(20000); }
+    catch(e){
+      driveAuthBroken = true;
+      const err = new Error('החיבור ל-Google Drive פג ולא ניתן לחדש אותו אוטומטית');
+      err.auth = true;
+      throw err;
+    }
     opts.headers.Authorization = 'Bearer '+accessToken;
     res = await fetch(url, opts);
   }
   return res;
 }
+/* Loud, persistent warning for a Drive save that did NOT happen (the small header status text was
+   too easy to miss). kind: 'auth' = needs one click to re-sign-in; anything else = plain retry.
+   Always offers a local backup download of what's in memory. Cleared by the next successful save. */
+function showDriveProblem(kind, message){
+  let bar = document.getElementById('driveProblemBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'driveProblemBar'; bar.className = 'no-print';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<span class="dp-msg">⚠ ${esc(message)} <b>השינויים האחרונים עדיין לא נשמרו ב-Drive.</b></span>
+    <button type="button" class="btn small" id="dpFix">${kind==='auth' ? 'התחבר מחדש ושמור' : 'נסה לשמור שוב'}</button>
+    <button type="button" class="btn small secondary" id="dpBackup">הורד גיבוי של מה שבמסך</button>`;
+  bar.style.display = 'flex';
+  document.getElementById('dpBackup').onclick = downloadUnsavedBackup;
+  document.getElementById('dpFix').onclick = ()=>{
+    if(kind==='auth'){
+      // called straight from the click, so the popup counts as user-initiated and isn't blocked
+      requestFreshToken(120000).then(()=>{ hideDriveProblem(); saveAll(); }).catch(()=>{ toast('ההתחברות מחדש לא הושלמה - נסה שוב', 4000); });
+    } else { hideDriveProblem(); saveAll(); }
+  };
+}
+function hideDriveProblem(){ const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none'; }
+function downloadUnsavedBackup(){
+  const blob = new Blob([JSON.stringify(buildFullPayload())], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `גיבוי-לא-שמור-${todayStr()}-${new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}).replace(':','-')}.json`;
+  a.click();
+  toast('הגיבוי ירד - ניתן לטעון אותו מ"הגדרות וגיבוי" (מיזוג)');
+}
+// Never close/reload the tab while changes haven't reached Drive without a warning
+window.addEventListener('beforeunload', e=>{ if(driveDirty){ e.preventDefault(); e.returnValue = ''; return ''; } });
+// Re-attempt a failed save every 45s on its own (not for auth problems - those need the click above)
+setInterval(()=>{ if(driveDirty && !driveSaveInFlight && !driveAuthBroken && !tokenRefreshPromise && driveFileId) saveAll(); }, 45000);
 
 window.addEventListener('load', ()=>{
   if(typeof google === 'undefined' || !google.accounts){
@@ -5672,7 +5767,9 @@ window.addEventListener('load', ()=>{
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: DRIVE_CLIENT_ID,
     scope: DRIVE_SCOPES,
-    callback: onDriveSignIn
+    callback: onDriveSignIn,
+    // popup blocked / closed: without this GIS stays silent and any pending refresh hung forever
+    error_callback: (err)=>{ if(pendingTokenError) pendingTokenError(err); }
   });
   document.getElementById('gateSignInBtn').onclick = ()=>{
     gateStatus('פותח חלון התחברות של Google...');
