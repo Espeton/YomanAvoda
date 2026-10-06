@@ -246,10 +246,19 @@
   /* Printable worker card with document photos (section 4.1) */
   .worker-print-details td{padding:4px 8px;}
   .worker-print-details td:first-child{width:28%; font-weight:bold; background:#FAFBFC;}
-  .worker-doc-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;}
-  .worker-doc-grid figure{margin:0; border:1px solid var(--border); border-radius:6px; padding:6px; break-inside:avoid; page-break-inside:avoid;}
-  .worker-doc-grid figcaption{font-weight:bold; font-size:12.5px; margin-bottom:4px;}
-  .worker-doc-grid img{width:100%; max-height:9.5cm; object-fit:contain; display:block;}
+  /* Every document image prints on its OWN page, scaled to fill an A4 page (06.10.2026 - was two
+     small images per row). On screen the pages are previewed as stacked blocks. */
+  .worker-doc-grid{display:block; margin-top:8px;}
+  .worker-doc-page{margin-bottom:14px; border:1px solid var(--border); border-radius:6px; padding:8px;}
+  .worker-doc-page figure{margin:0;}
+  .worker-doc-page figcaption{font-weight:bold; font-size:14px; margin-bottom:6px;}
+  .worker-doc-page img{width:100%; max-height:26cm; object-fit:contain; display:block;}
+  .badge.note-badge{background:#B7791F; font-size:11px;}
+  @media print{
+    .worker-doc-page{page-break-before:always; break-before:page; margin:0; padding:0; border:none;}
+    .worker-doc-page figcaption{font-size:13px; margin-bottom:4px;}
+    .worker-doc-page img{max-height:24.5cm;}
+  }
   .subrow{
     display:flex; gap:8px; align-items:flex-end; margin-bottom:8px; flex-wrap:wrap;
     border:1px dashed var(--border); padding:10px; border-radius:6px; background:#FAFBFC;
@@ -1320,7 +1329,7 @@ let selectedWorkersCrewId = '';
    field in that form, uploads here aren't written to the worker record until "הוסף פועל"/"שמור
    שינויים" is clicked. Re-seeded from the worker being edited at the top of every renderWorkers
    call, so it always reflects whichever worker (or "new worker") the form currently shows. */
-let workerPhotoStaging = {visaPhoto:'', idPhoto:'', heightPermitPhoto:'', additionalLicenses:[]};
+let workerPhotoStaging = {visaPhoto:'', idPhoto:'', heightPermitPhoto:'', additionalLicenses:[], extraPhotos:[]};
 let selectedLogIds = new Set();
 let selectedReportType = 'attendance';
 let editingExecContractorRows = new Set();
@@ -1912,7 +1921,8 @@ function renderWorkers(main, contractorCrews){
     visaPhoto: editing ? (editing.visaPhoto||'') : '',
     idPhoto: editing ? (editing.idPhoto||'') : '',
     heightPermitPhoto: editing ? (editing.heightPermitPhoto||'') : '',
-    additionalLicenses: editing ? (editing.additionalLicenses||[]).map(x=>({...x})) : []
+    additionalLicenses: editing ? (editing.additionalLicenses||[]).map(x=>({...x})) : [],
+    extraPhotos: editing ? (editing.extraPhotos||[]).map(x=>({...x})) : []
   };
   // Inner content only (not the wrapping div) - so a single upload/remove can refresh just this
   // field's DOM subtree afterward without regenerating (and losing unsaved edits in) the rest of
@@ -1952,6 +1962,14 @@ function renderWorkers(main, contractorCrews){
       </div>
     </div>
     <div class="photos-grid" id="worker_licenses_grid" style="margin-top:4px;"></div>
+    <div class="grid">
+      <div class="field"><label>הערה</label><input id="worker_note" placeholder="לדוגמה: מחליף, זמני" value="${editing?esc(editing.note||''):''}"></div>
+      <div class="field">
+        <label title="עד 5 קבצים, אפשר להוסיף בכל פעם - לכל תמונה אפשר לכתוב מלל הסבר">תמונות נוספות (עד 5, עם מלל הסבר)</label>
+        <input type="file" id="worker_photo_extra" accept="image/*,application/pdf" multiple>
+      </div>
+    </div>
+    <div class="photos-grid" id="worker_extra_grid" style="margin-top:4px;"></div>
     <div class="hint">אפשר להעלות גם קובץ PDF בשדות המסמכים - הוא יומר אוטומטית לתמונה (העמוד הראשון בלבד).</div>
     ${editing && contractorCrews.length>1 ? `
     <div class="field" style="max-width:340px;">
@@ -2018,46 +2036,54 @@ function renderWorkers(main, contractorCrews){
   wireDocPhotoField('צילום ת.ז / דרכון', 'idPhoto', 'worker_photo_id');
   wireDocPhotoField('צילום אישור עבודה בגובה', 'heightPermitPhoto', 'worker_photo_height');
 
-  /* "רשיונות נוספים" - open-ended gallery (unlike the three named slots above), same add/caption/
-     remove pattern as the daily log's own photo gallery (renderPhotos), just scoped to
-     workerPhotoStaging.additionalLicenses instead of draft.photos. */
-  function renderWorkerLicensesGrid(){
-    const grid = document.getElementById('worker_licenses_grid');
+  /* Two open-ended galleries (unlike the three named slots above), each up to 5 images with a short
+     explanatory caption per image, same add/caption/remove pattern as the daily log's own photo
+     gallery (renderPhotos): "רשיונות נוספים" (workerPhotoStaging.additionalLicenses) and, added
+     06.10.2026, "תמונות נוספות" (workerPhotoStaging.extraPhotos) for anything that isn't a license. */
+  const WORKER_GALLERIES = [
+    {key:'additionalLicenses', gridId:'worker_licenses_grid', inputId:'worker_photo_licenses', placeholder:'תיאור קצר (למשל: היתר עבודה)'},
+    {key:'extraPhotos', gridId:'worker_extra_grid', inputId:'worker_photo_extra', placeholder:'מלל הסבר לתמונה'}
+  ];
+  function renderWorkerGallery(g){
+    const grid = document.getElementById(g.gridId);
     if(!grid) return;
     grid.innerHTML = '';
-    workerPhotoStaging.additionalLicenses.forEach((ph,i)=>{
+    workerPhotoStaging[g.key].forEach((ph,i)=>{
       const div = document.createElement('div');
       div.className = 'photo-thumb';
       div.innerHTML = `
         <button type="button" class="rm" data-i="${i}">×</button>
         <img src="${ph.dataUrl}">
-        <input placeholder="תיאור קצר (למשל: היתר עבודה)" class="lic_cap" data-i="${i}" value="${esc(ph.caption||'')}">
+        <input placeholder="${g.placeholder}" class="lic_cap" data-i="${i}" value="${esc(ph.caption||'')}">
       `;
       grid.appendChild(div);
     });
-    grid.querySelectorAll('.lic_cap').forEach(el=>el.oninput = e=>{ workerPhotoStaging.additionalLicenses[+e.target.dataset.i].caption = e.target.value; });
-    grid.querySelectorAll('.rm').forEach(el=>el.onclick = e=>{ workerPhotoStaging.additionalLicenses.splice(+e.target.dataset.i,1); renderWorkerLicensesGrid(); });
+    grid.querySelectorAll('.lic_cap').forEach(el=>el.oninput = e=>{ workerPhotoStaging[g.key][+e.target.dataset.i].caption = e.target.value; });
+    grid.querySelectorAll('.rm').forEach(el=>el.onclick = e=>{ workerPhotoStaging[g.key].splice(+e.target.dataset.i,1); renderWorkerGallery(g); });
   }
-  document.getElementById('worker_photo_licenses').onchange = async (e)=>{
-    const files = Array.from(e.target.files);
-    const room = 5 - workerPhotoStaging.additionalLicenses.length;
-    if(room<=0){ toast('הגעת למקסימום 5 קבצים'); e.target.value=''; return; }
-    const failed = [], notes = [];
-    if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
-    for(const f of files.slice(0, room)){
-      try{
-        const {dataUrl, note} = await photoOrPdfDataUrl(f, 1200, 0.75);
-        workerPhotoStaging.additionalLicenses.push({caption:'', dataUrl});
-        if(note) notes.push(note);
-      }catch(err){ failed.push(f.name); }
-    }
-    if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
-    else if(notes.length) toast(notes.join(' · '));
-    else if(files.length>room) toast('נוספו עד 5 קבצים בלבד (המכסה)');
-    e.target.value='';
-    renderWorkerLicensesGrid();
-  };
-  renderWorkerLicensesGrid();
+  function renderAllWorkerGalleries(){ WORKER_GALLERIES.forEach(renderWorkerGallery); }
+  WORKER_GALLERIES.forEach(g=>{
+    document.getElementById(g.inputId).onchange = async (e)=>{
+      const files = Array.from(e.target.files);
+      const room = 5 - workerPhotoStaging[g.key].length;
+      if(room<=0){ toast('הגעת למקסימום 5 קבצים'); e.target.value=''; return; }
+      const failed = [], notes = [];
+      if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
+      for(const f of files.slice(0, room)){
+        try{
+          const {dataUrl, note} = await photoOrPdfDataUrl(f, 1200, 0.75);
+          workerPhotoStaging[g.key].push({caption:'', dataUrl});
+          if(note) notes.push(note);
+        }catch(err){ failed.push(f.name); }
+      }
+      if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
+      else if(notes.length) toast(notes.join(' · '));
+      else if(files.length>room) toast('נוספו עד 5 קבצים בלבד (המכסה)');
+      e.target.value='';
+      renderWorkerGallery(g);
+    };
+  });
+  renderAllWorkerGalleries();
 
   /* "איפוס טופס" - wipes every field of this form (text, dates, staged document photos, extra
      licenses) back to blank, for a double or wrong entry. Nothing saved is touched: in edit mode
@@ -2065,14 +2091,14 @@ function renderWorkers(main, contractorCrews){
      still the way to simply abandon edits and keep the stored values). */
   document.getElementById('worker_reset').onclick = ()=>{
     if(!confirm('לאפס את כל השדות בטופס? מה שהוקלד ועדיין לא נשמר יימחק.' + (editing ? '\n(הפועל הקיים לא ישתנה עד שתלחץ "שמור שינויים".)' : ''))) return;
-    ['worker_idnum','worker_name','worker_phone','worker_heightExpiry','worker_visaExpiry'].forEach(id=>{ document.getElementById(id).value = ''; });
-    workerPhotoStaging = {visaPhoto:'', idPhoto:'', heightPermitPhoto:'', additionalLicenses:[]};
+    ['worker_idnum','worker_name','worker_phone','worker_heightExpiry','worker_visaExpiry','worker_note'].forEach(id=>{ document.getElementById(id).value = ''; });
+    workerPhotoStaging = {visaPhoto:'', idPhoto:'', heightPermitPhoto:'', additionalLicenses:[], extraPhotos:[]};
     [['צילום ויזה','visaPhoto','worker_photo_visa'], ['צילום ת.ז / דרכון','idPhoto','worker_photo_id'], ['צילום אישור עבודה בגובה','heightPermitPhoto','worker_photo_height']].forEach(([label,key,inputId])=>{
       document.getElementById('field_'+inputId).innerHTML = docPhotoFieldInner(label, key, inputId);
       wireDocPhotoField(label, key, inputId);
     });
-    document.getElementById('worker_photo_licenses').value = '';
-    renderWorkerLicensesGrid();
+    WORKER_GALLERIES.forEach(g=>{ document.getElementById(g.inputId).value = ''; });
+    renderAllWorkerGalleries();
     toast('הטופס אופס');
   };
 
@@ -2094,6 +2120,7 @@ function renderWorkers(main, contractorCrews){
     const idNumber = document.getElementById('worker_idnum').value.trim();
     const name = document.getElementById('worker_name').value.trim();
     const phone = document.getElementById('worker_phone').value.trim();
+    const note = document.getElementById('worker_note').value.trim();
     const heightExpiry = document.getElementById('worker_heightExpiry').value;
     const visaExpiry = document.getElementById('worker_visaExpiry').value;
     if(!idNumber){ toast('נא למלא ת.ז / דרכון'); return; }
@@ -2106,6 +2133,8 @@ function renderWorkers(main, contractorCrews){
       editing.idPhoto = workerPhotoStaging.idPhoto;
       editing.heightPermitPhoto = workerPhotoStaging.heightPermitPhoto;
       editing.additionalLicenses = workerPhotoStaging.additionalLicenses;
+      editing.extraPhotos = workerPhotoStaging.extraPhotos;
+      editing.note = note;
       const transferSelect = document.getElementById('worker_transferCrew');
       if(transferSelect && transferSelect.value && transferSelect.value!==editing.crewId){
         const transferDateInput = document.getElementById('worker_transferDate');
@@ -2126,6 +2155,7 @@ function renderWorkers(main, contractorCrews){
       }
       workers.push({ id: uid('worker'), crewId: selectedWorkersCrewId, name, idNumber, phone, heightExpiry, visaExpiry,
         visaPhoto: workerPhotoStaging.visaPhoto, idPhoto: workerPhotoStaging.idPhoto, heightPermitPhoto: workerPhotoStaging.heightPermitPhoto, additionalLicenses: workerPhotoStaging.additionalLicenses,
+        extraPhotos: workerPhotoStaging.extraPhotos, note,
         active:true, crewHistory:[{crewId:selectedWorkersCrewId, from:todayStr()}] });
       saveAll(); toast('הפועל נוסף'); render();
     }
@@ -2204,7 +2234,7 @@ function renderWorkers(main, contractorCrews){
     // The list is sorted alphabetically by NAME (sortWorkersAlpha) - so the name leads the row,
     // otherwise the bold leading ת.ז/דרכון numbers made the (correct) order look random. The
     // ת.ז/דרכון stays on the same first line, as the visible key it was made in 04.09.2026.
-    li.innerHTML = `<div><b>${esc(w.name||w.idNumber)}</b>${w.name?` <span style="color:var(--muted); font-size:12.5px;">ת.ז/דרכון: ${esc(w.idNumber)}</span>`:''}${!isActive?' <span class="badge gray">לא פעיל</span>':''}<div class="meta">${esc(metaParts.join(' · '))}</div></div>`;
+    li.innerHTML = `<div><b>${esc(w.name||w.idNumber)}</b>${w.name?` <span style="color:var(--muted); font-size:12.5px;">ת.ז/דרכון: ${esc(w.idNumber)}</span>`:''}${!isActive?' <span class="badge gray">לא פעיל</span>':''}${w.note?` <span class="badge note-badge" title="הערה">${esc(w.note)}</span>`:''}<div class="meta">${esc(metaParts.join(' · '))}</div></div>`;
     const actions = document.createElement('div');
     actions.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
     const printBtn = document.createElement('button');
@@ -2253,7 +2283,8 @@ function renderWorkerPrintView(main, workerId){
     {label:'צילום ויזה', src:w.visaPhoto},
     {label:'צילום ת.ז / דרכון', src:w.idPhoto},
     {label:'צילום אישור עבודה בגובה', src:w.heightPermitPhoto},
-    ...(w.additionalLicenses||[]).map(l=>({label:'רשיון נוסף' + (l.caption?(': '+l.caption):''), src:l.dataUrl}))
+    ...(w.additionalLicenses||[]).map(l=>({label:'רשיון נוסף' + (l.caption?(': '+l.caption):''), src:l.dataUrl})),
+    ...(w.extraPhotos||[]).map(l=>({label:'תמונה נוספת' + (l.caption?(': '+l.caption):''), src:l.dataUrl}))
   ].filter(d=>d.src);
   const detailRow = (label, value)=> `<tr><td>${label}</td><td>${value?esc(value):'—'}</td></tr>`;
   main.innerHTML = `
@@ -2270,12 +2301,13 @@ function renderWorkerPrintView(main, workerId){
           ${detailRow('תוקף אישור עבודה בגובה', w.heightExpiry?fmtDate(w.heightExpiry):'')}
           ${detailRow('תוקף ויזה', w.visaExpiry?fmtDate(w.visaExpiry):'')}
           ${detailRow('סטטוס', w.active===false?'לא פעיל':'פעיל')}
+          ${w.note ? detailRow('הערה', w.note) : ''}
         </tbody>
       </table>
       <h3 style="margin-top:14px;">מסמכים מצולמים</h3>
       ${docs.length===0
         ? '<div class="empty">לא הועלו מסמכים מצולמים לפועל זה.</div>'
-        : `<div class="worker-doc-grid">${docs.map(d=>`<figure><figcaption>${esc(d.label)}</figcaption><img src="${d.src}"></figure>`).join('')}</div>`}
+        : `<div class="worker-doc-grid">${docs.map(d=>`<div class="worker-doc-page"><figure><figcaption>${esc(w.name||w.idNumber||'')} · ${esc(d.label)}</figcaption><img src="${d.src}"></figure></div>`).join('')}</div>`}
     </div>
   `;
   const backBar = document.createElement('div');
