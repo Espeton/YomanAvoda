@@ -5678,8 +5678,26 @@ function gateStatus(text){
 let tokenRefreshPromise = null;
 let pendingTokenError = null;
 let driveAuthBroken = false;
-function requestFreshToken(timeoutMs){
-  if(tokenRefreshPromise) return tokenRefreshPromise;
+/* force=true is for the "התחבר מחדש" click: it must start its OWN fresh request, never join a
+   background attempt that is already in flight (07.10.2026 report: the click answered
+   "ההתחברות מחדש לא הושלמה" because it had attached to a blocked silent attempt started by a
+   background save a moment earlier, and so never actually opened the sign-in popup itself). It
+   also rebuilds the token client, in case an earlier blocked popup left GIS in a bad state. */
+function makeTokenClient(){
+  return google.accounts.oauth2.initTokenClient({
+    client_id: DRIVE_CLIENT_ID,
+    scope: DRIVE_SCOPES,
+    callback: onDriveSignIn,
+    // popup blocked / closed: without this GIS stays silent and any pending refresh hung forever
+    error_callback: (err)=>{ if(pendingTokenError) pendingTokenError(err); }
+  });
+}
+function requestFreshToken(timeoutMs, force){
+  if(tokenRefreshPromise){
+    if(!force) return tokenRefreshPromise;
+    if(pendingTokenError) pendingTokenError({type:'superseded_by_user_click'});   // cancel the old attempt first (resets its state)
+  }
+  if(force && typeof google !== 'undefined' && google.accounts){ tokenClient = makeTokenClient(); }
   tokenRefreshPromise = new Promise((resolve, reject)=>{
     let settled = false, timer = null;
     const finish = (fn, val)=>{
@@ -5698,7 +5716,11 @@ function requestFreshToken(timeoutMs){
       driveAuthBroken = false;
       finish(resolve, accessToken);
     };
-    try{ tokenClient.requestAccessToken({prompt:''}); }catch(e){ finish(reject, e); }
+    try{
+      const cfg = {prompt:''};
+      if(presenceMe && presenceMe.email) cfg.hint = presenceMe.email;   // pre-selects the account, no chooser
+      tokenClient.requestAccessToken(cfg);
+    }catch(e){ finish(reject, e); }
   });
   return tokenRefreshPromise;
 }
@@ -5717,12 +5739,14 @@ async function driveFetch(url, options={}){
   const opts = Object.assign({}, options, { headers: Object.assign({}, options.headers, { Authorization:'Bearer '+accessToken }) });
   let res = await fetch(url, opts);
   if(res.status === 401){
+    const authError = ()=>{ const err = new Error('החיבור ל-Google Drive פג ולא ניתן לחדש אותו אוטומטית'); err.auth = true; return err; };
+    // Already known to be broken: don't fire yet another doomed (popup-blocked) attempt per background
+    // save - those attempts are exactly what a user's "התחבר מחדש" click used to collide with.
+    if(driveAuthBroken){ throw authError(); }
     try{ await requestFreshToken(20000); }
     catch(e){
       driveAuthBroken = true;
-      const err = new Error('החיבור ל-Google Drive פג ולא ניתן לחדש אותו אוטומטית');
-      err.auth = true;
-      throw err;
+      throw authError();
     }
     opts.headers.Authorization = 'Bearer '+accessToken;
     res = await fetch(url, opts);
@@ -5746,6 +5770,10 @@ function showDriveProblem(kind, message){
     bar.setAttribute('role','alertdialog'); bar.setAttribute('aria-modal','true');
     document.body.appendChild(bar);
   }
+  // Already showing this same kind of problem: leave it alone (background saves keep failing and
+  // calling this - re-rendering would reset the button while a sign-in popup is open)
+  if(bar.style.display === 'flex' && bar.dataset.kind === kind) return;
+  bar.dataset.kind = kind;
   bar.innerHTML = `<div class="dp-box">
       <div class="dp-icon">⚠</div>
       <h2>${kind==='auth' ? 'נדרש חיבור מחדש ל-Google Drive' : 'השמירה ל-Drive נכשלה'}</h2>
@@ -5765,7 +5793,21 @@ function showDriveProblem(kind, message){
   document.getElementById('dpFix').onclick = ()=>{
     if(kind==='auth'){
       // called straight from the click, so the popup counts as user-initiated and isn't blocked
-      requestFreshToken(120000).then(()=>{ hideDriveProblem(); saveAll(); }).catch(()=>{ toast('ההתחברות מחדש לא הושלמה - נסה שוב', 4000); });
+      const fixBtn = document.getElementById('dpFix');
+      fixBtn.disabled = true; fixBtn.textContent = 'ממתין לחלון ההתחברות של Google...';
+      requestFreshToken(120000, true)
+        .then(()=>{ hideDriveProblem(); saveAll(); })
+        .catch(e=>{
+          fixBtn.disabled = false; fixBtn.textContent = 'נסה שוב להתחבר';
+          const m = String(e && e.message || e);
+          // say what actually happened, and what to do if it keeps failing (nothing is lost meanwhile)
+          const hint = /popup_failed_to_open/.test(m) ? 'הדפדפן חסם את חלון ההתחברות - אפשר חלונות קופצים לאתר הזה ונסה שוב.'
+                     : /popup_closed/.test(m) ? 'חלון ההתחברות נסגר לפני שהסתיים - נסה שוב והשלם את ההתחברות.'
+                     : 'ההתחברות לא הושלמה (' + m + ').';
+          let fb = document.getElementById('dpFail');
+          if(!fb){ fb = document.createElement('p'); fb.id = 'dpFail'; fb.className = 'dp-warn'; document.querySelector('#driveProblemBar .dp-actions').before(fb); }
+          fb.innerHTML = esc(hint) + '<br><small>אם זה ממשיך להיכשל: לחץ "הורד גיבוי של מה שבמסך", רענן את הדף, התחבר, ואז טען את הגיבוי ב"הגדרות וגיבוי" במצב מיזוג - שום דבר לא יאבד.</small>';
+        });
     } else { hideDriveProblem(); saveAll(); }
   };
   document.getElementById('dpFix').focus();
@@ -5792,13 +5834,7 @@ window.addEventListener('load', ()=>{
     gateStatus('שגיאה: ספריית ההתחברות של Google לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.');
     return;
   }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: DRIVE_CLIENT_ID,
-    scope: DRIVE_SCOPES,
-    callback: onDriveSignIn,
-    // popup blocked / closed: without this GIS stays silent and any pending refresh hung forever
-    error_callback: (err)=>{ if(pendingTokenError) pendingTokenError(err); }
-  });
+  tokenClient = makeTokenClient();
   document.getElementById('gateSignInBtn').onclick = ()=>{
     gateStatus('פותח חלון התחברות של Google...');
     // prompt:'' (instead of 'consent') asks Google to skip the account-chooser/consent/
