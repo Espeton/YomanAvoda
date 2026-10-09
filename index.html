@@ -307,6 +307,16 @@
   .date-blank{display:inline-block; min-width:150px; height:16px; border-bottom:1px solid var(--ink); margin-inline-start:6px;}
   .blank-toolbox-table td{height:30px;}
   .blank-toolbox-table td:first-child, .blank-toolbox-table th:first-child{text-align:center;}
+  /* several crews on one blank sheet: dark separator row per crew (same look as the toolbox matrix's
+     group rows); print-color-adjust so the dark band prints without "Background graphics" ticked */
+  .blank-toolbox-table tr{break-inside:avoid; page-break-inside:avoid;}
+  .blank-toolbox-table tr.blank-group-row td{background:var(--navy); color:#fff; font-weight:bold; text-align:right !important; height:auto; padding:5px 10px; -webkit-print-color-adjust:exact; print-color-adjust:exact; break-after:avoid; page-break-after:avoid;}
+  .pb-list{display:flex; flex-wrap:wrap; gap:10px;}
+  .pb-contractor{border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:#FAFBFC; min-width:170px;}
+  .pb-cname{font-weight:bold; color:var(--navy-dark); margin-bottom:4px; font-size:13px;}
+  .pb-crew{display:flex; align-items:center; gap:6px; font-weight:normal; font-size:13.5px; margin:3px 0; color:var(--text); cursor:pointer;}
+  .pb-crew input{width:auto;}
+  .pb-n{color:var(--muted); font-size:12px;}
   /* כרטיס עבודה (section 4.3) - personal time-card grid */
   .wc-table td, .wc-table th{text-align:center;}
   .wc-table .wc-day-cell{font-weight:bold; background:#FAFBFC;}
@@ -3660,18 +3670,21 @@ function renderToolbox(main){
     <div class="row-actions no-print" style="margin-top:18px; border-top:1px dashed var(--border); padding-top:14px;">
       <button class="btn secondary" id="tbx_printBlankBtn">🖨️ הדפסת טופס נוכחות ריק (לחתימות ידניות)</button>
     </div>
-    <div class="row-actions no-print" id="tbx_printBlankPicker" style="display:none; margin-top:8px; align-items:flex-end; gap:10px; flex-wrap:wrap;">
-      <div class="field"><label>קבלן משנה</label>
-        <select id="tbx_printBlank_contractor" class="searchable">
-          <option value="">בחר קבלן...</option>
-          ${printableContractors.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
-        </select>
+    <div class="no-print" id="tbx_printBlankPicker" style="display:none; margin-top:8px;">
+      <label style="display:block; margin-bottom:6px;">בחר קבוצות להדפסה - אפשר כמה, גם של קבלנים שונים. כולן יופיעו באותו טופס, כל קבוצה בנפרד:</label>
+      <div class="pb-list">
+        ${printableContractors.map(c=>`
+          <div class="pb-contractor"><div class="pb-cname">${esc(c.name)}</div>
+            ${sortCrewsAlpha(crewsForContractor(c.id)).map(cr=>{
+              const n = workers.filter(w=>w.crewId===cr.id && w.active!==false).length;
+              return `<label class="pb-crew"><input type="checkbox" class="pb-crew-cb" value="${cr.id}"> ${esc(cr.name)} <span class="pb-n">(${n})</span></label>`;
+            }).join('')}
+          </div>`).join('')}
       </div>
-      <div class="field"><label>קבוצה</label>
-        <select id="tbx_printBlank_crew" class="searchable"><option value="">בחר קבלן קודם...</option></select>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn" id="tbx_printBlankGo">הדפס</button>
+        <button class="btn secondary" id="tbx_printBlankCancel">ביטול</button>
       </div>
-      <button class="btn" id="tbx_printBlankGo">הדפס</button>
-      <button class="btn secondary" id="tbx_printBlankCancel">ביטול</button>
     </div>` : ''}
     <div class="note" style="margin-top:16px;">כלי נפרד לסימון נוכחות פועלים בשם, לפי קבוצת עבודה: פועלים בשורות, ימות החודש בעמודות. <b>בשלב זה זה אינו משפיע</b> על "מספר הפועלים" הרשום בנוכחות קבלני המשנה ביומן העבודה היומי - שילוב בין השניים מתוכנן לשלב מאוחר יותר.</div>
   `;
@@ -3682,19 +3695,13 @@ function renderToolbox(main){
   if(printableContractors.length>0){
     document.getElementById('tbx_printBlankBtn').onclick = ()=>{
       const picker = document.getElementById('tbx_printBlankPicker');
-      picker.style.display = picker.style.display==='none' ? 'flex' : 'none';
-    };
-    document.getElementById('tbx_printBlank_contractor').onchange = e=>{
-      const crewSel = document.getElementById('tbx_printBlank_crew');
-      const opts = crewsForContractor(e.target.value);
-      crewSel.innerHTML = '<option value="">בחר קבוצה...</option>' + opts.map(cr=>`<option value="${cr.id}">${esc(cr.name)}</option>`).join('');
+      picker.style.display = picker.style.display==='none' ? 'block' : 'none';
     };
     document.getElementById('tbx_printBlankCancel').onclick = ()=>{ document.getElementById('tbx_printBlankPicker').style.display = 'none'; };
     document.getElementById('tbx_printBlankGo').onclick = ()=>{
-      const contractorId = document.getElementById('tbx_printBlank_contractor').value;
-      const crewId = document.getElementById('tbx_printBlank_crew').value;
-      if(!contractorId || !crewId){ toast('נא לבחור קבלן וקבוצה להדפסה'); return; }
-      renderToolboxBlankFormPrint(document.getElementById('app'), contractorId, crewId);
+      const crewIds = Array.from(document.querySelectorAll('#tbx_printBlankPicker .pb-crew-cb:checked')).map(cb=>cb.value);
+      if(crewIds.length===0){ toast('נא לבחור לפחות קבוצה אחת להדפסה'); return; }
+      renderToolboxBlankFormPrint(document.getElementById('app'), crewIds);
     };
   }
   renderToolboxMatrix();
@@ -3702,21 +3709,35 @@ function renderToolbox(main){
 }
 /* Blank, unfilled sign-in sheet for one contractor+crew - printed for handwritten signatures
    at an on-site toolbox talk, instead of (or alongside) digital marking in the matrix above. */
-function buildToolboxBlankFormHtml(contractorId, crewId){
-  const c = contractors.find(x=>x.id===contractorId);
-  const cr = crews.find(x=>x.id===crewId);
-  const crewWorkers = sortWorkersByIdNumber(workers.filter(w=>w.crewId===crewId && w.active!==false));
-  const rows = crewWorkers.length>0
-    ? crewWorkers.map((w,idx)=>`<tr><td>${idx+1}</td><td>${esc(w.idNumber||'')}</td><td>${esc(w.name||'')}</td><td></td><td></td></tr>`).join('')
-    : `<tr><td colspan="5" style="text-align:center; color:var(--muted);">אין פועלים פעילים רשומים בקבוצה זו</td></tr>`;
+/* Accepts ONE OR SEVERAL crews (10.10.2026 request: e.g. LIN + איטום, or ואן + RANJEET, on the same
+   sheet), possibly of different contractors. One crew prints exactly as before. Several crews print
+   in one table, each under its own dark header row "קבלן - קבוצה" with מס"ד restarting at 1 - the
+   same visual separation the toolbox matrix uses. */
+function buildToolboxBlankFormHtml(crewIds){
+  crewIds = Array.isArray(crewIds) ? crewIds : [crewIds];
+  const sections = crewIds.map(id=>{
+    const cr = crews.find(x=>x.id===id);
+    const c = cr ? contractors.find(x=>x.id===cr.contractorId) : null;
+    return { c, cr, ws: sortWorkersByIdNumber(workers.filter(w=>w.crewId===id && w.active!==false)) };
+  }).filter(s=>s.cr)
+    .sort((a,b)=> ((a.c&&a.c.name)||'').localeCompare((b.c&&b.c.name)||'', 'he') || (a.cr.name||'').localeCompare(b.cr.name||'', 'he'));
+  const multi = sections.length > 1;
+  const rows = sections.map(s=>{
+    const groupRow = multi ? `<tr class="blank-group-row"><td colspan="5">${esc(s.c?s.c.name:'—')} - ${esc(s.cr.name)}</td></tr>` : '';
+    const body = s.ws.length>0
+      ? s.ws.map((w,idx)=>`<tr><td>${idx+1}</td><td>${esc(w.idNumber||'')}</td><td>${esc(w.name||'')}</td><td></td><td></td></tr>`).join('')
+      : `<tr><td colspan="5" style="text-align:center; color:var(--muted);">אין פועלים פעילים רשומים בקבוצה זו</td></tr>`;
+    return groupRow + body;
+  }).join('');
+  const meta = multi
+    ? `<div><b>קבוצות (${sections.length}):</b> ${sections.map(s=>esc((s.c?s.c.name:'—')+' - '+s.cr.name)).join(' · ')}</div>`
+    : `<div><b>קבלן משנה:</b> ${esc(sections[0]&&sections[0].c?sections[0].c.name:'—')}</div>
+       <div><b>קבוצה:</b> ${esc(sections[0]?sections[0].cr.name:'—')}</div>`;
   return `
     <div class="card blank-toolbox-form">
       ${buildPrintHeader()}
       <div class="blank-form-toprow">
-        <div class="blank-form-meta">
-          <div><b>קבלן משנה:</b> ${esc(c?c.name:'—')}</div>
-          <div><b>קבוצה:</b> ${esc(cr?cr.name:'—')}</div>
-        </div>
+        <div class="blank-form-meta">${meta}</div>
         <div class="blank-form-date"><b>תאריך:</b><span class="date-blank"></span></div>
       </div>
       <h2 style="margin-top:6px;">טולבוקס - נוכחות והדרכות</h2>
@@ -3732,8 +3753,8 @@ function buildToolboxBlankFormHtml(contractorId, crewId){
     </div>
   `;
 }
-function renderToolboxBlankFormPrint(main, contractorId, crewId){
-  main.innerHTML = buildToolboxBlankFormHtml(contractorId, crewId);
+function renderToolboxBlankFormPrint(main, crewIds){
+  main.innerHTML = buildToolboxBlankFormHtml(crewIds);
   const backBar = document.createElement('div');
   backBar.className = 'no-print';
   backBar.style.cssText = 'position:sticky; top:calc(var(--topbar-h, 0px) + 10px); z-index:99; display:flex; gap:8px; margin-bottom:12px;';
