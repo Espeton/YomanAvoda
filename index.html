@@ -269,6 +269,9 @@
   .photo-thumb{position:relative; width:110px;}
   .photo-thumb img{width:110px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--border);}
   .photo-thumb input{margin-top:4px; font-size:11px; padding:4px;}
+  .paste-zone{display:inline-block; margin-top:4px; padding:4px 12px; border:1.5px dashed #94A3B8; border-radius:6px; background:#F8FAFC; color:#475569; font-size:12.5px; cursor:pointer; user-select:none;}
+  .paste-zone:hover{border-color:var(--navy); color:var(--navy);}
+  .paste-zone:focus{outline:none; border-color:#2563EB; background:#EFF6FF; color:#1E40AF; box-shadow:0 0 0 3px rgba(37,99,235,.2);}
   /* Click-to-enlarge for every photo thumbnail (worker documents, licenses, daily-log photos) */
   .photo-thumb img{cursor:zoom-in;}
   #imgLightbox{position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,0.85); overflow:auto; display:none; padding:16px; text-align:center;}
@@ -1964,6 +1967,7 @@ function renderWorkers(main, contractorCrews){
     return `
       <label>${label}</label>
       <input type="file" id="${inputId}" accept="image/*,application/pdf">
+      <span class="paste-zone" id="paste_${inputId}" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V">📋 הדבק</span>
       ${val ? `<div class="photo-thumb" style="margin-top:6px;"><button type="button" class="rm doc-photo-rm" data-doc="${key}">×</button><img src="${val}"></div>` : ''}
     `;
   };
@@ -1991,6 +1995,7 @@ function renderWorkers(main, contractorCrews){
       <div class="field">
         <label title="עד 5 קבצים, אפשר להוסיף בכל פעם - תמונה או PDF (עמוד ראשון בלבד)">רשיונות נוספים (עד 5)</label>
         <input type="file" id="worker_photo_licenses" accept="image/*,application/pdf" multiple>
+        <span class="paste-zone" id="paste_worker_photo_licenses" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V">📋 הדבק</span>
       </div>
     </div>
     <div class="photos-grid" id="worker_licenses_grid" style="margin-top:4px;"></div>
@@ -1999,6 +2004,7 @@ function renderWorkers(main, contractorCrews){
       <div class="field">
         <label title="עד 5 קבצים, אפשר להוסיף בכל פעם - לכל תמונה אפשר לכתוב מלל הסבר">תמונות נוספות (עד 5, עם מלל הסבר)</label>
         <input type="file" id="worker_photo_extra" accept="image/*,application/pdf" multiple>
+        <span class="paste-zone" id="paste_worker_photo_extra" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V">📋 הדבק</span>
       </div>
     </div>
     <div class="photos-grid" id="worker_extra_grid" style="margin-top:4px;"></div>
@@ -2039,9 +2045,9 @@ function renderWorkers(main, contractorCrews){
   function wireDocPhotoField(label, key, inputId){
     const fieldEl = document.getElementById('field_'+inputId);
     const fileInput = document.getElementById(inputId);
-    fileInput.onchange = async (e)=>{
-      const file = e.target.files[0];
-      if(!file) return;
+    // One handler for the file picker AND for paste (single-slot field: takes the first file)
+    async function setSlotFile(file){
+      if(!file) return false;
       const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name||'');
       if(isPdf) toast('ממיר PDF לתמונה...');
       try{
@@ -2050,11 +2056,17 @@ function renderWorkers(main, contractorCrews){
         fieldEl.innerHTML = docPhotoFieldInner(label, key, inputId);
         wireDocPhotoField(label, key, inputId);
         if(note) toast(note);
+        return true;
       }catch(err){
         toast(err.message || 'שגיאה בהעלאת הקובץ');
-        e.target.value = '';
+        return false;
       }
+    }
+    fileInput.onchange = async (e)=>{
+      const ok = await setSlotFile(e.target.files[0]);
+      if(!ok) e.target.value = '';
     };
+    attachPasteZone(document.getElementById('paste_'+inputId), files=> setSlotFile(files[0]));
     const rmBtn = fieldEl.querySelector('.doc-photo-rm');
     if(rmBtn){
       rmBtn.onclick = ()=>{
@@ -2094,26 +2106,30 @@ function renderWorkers(main, contractorCrews){
     grid.querySelectorAll('.rm').forEach(el=>el.onclick = e=>{ workerPhotoStaging[g.key].splice(+e.target.dataset.i,1); renderWorkerGallery(g); });
   }
   function renderAllWorkerGalleries(){ WORKER_GALLERIES.forEach(renderWorkerGallery); }
+  // One function per gallery serves both the file picker and paste (Ctrl+V / "הדבק")
+  async function addGalleryFiles(g, files){
+    const room = 5 - workerPhotoStaging[g.key].length;
+    if(room<=0){ toast('הגעת למקסימום 5 קבצים'); return; }
+    const failed = [], notes = [];
+    if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
+    for(const f of files.slice(0, room)){
+      try{
+        const {dataUrl, note} = await photoOrPdfDataUrl(f, 1200, 0.75);
+        workerPhotoStaging[g.key].push({caption:'', dataUrl});
+        if(note) notes.push(note);
+      }catch(err){ failed.push(f.name); }
+    }
+    if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
+    else if(notes.length) toast(notes.join(' · '));
+    else if(files.length>room) toast('נוספו עד 5 קבצים בלבד (המכסה)');
+    renderWorkerGallery(g);
+  }
   WORKER_GALLERIES.forEach(g=>{
     document.getElementById(g.inputId).onchange = async (e)=>{
-      const files = Array.from(e.target.files);
-      const room = 5 - workerPhotoStaging[g.key].length;
-      if(room<=0){ toast('הגעת למקסימום 5 קבצים'); e.target.value=''; return; }
-      const failed = [], notes = [];
-      if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
-      for(const f of files.slice(0, room)){
-        try{
-          const {dataUrl, note} = await photoOrPdfDataUrl(f, 1200, 0.75);
-          workerPhotoStaging[g.key].push({caption:'', dataUrl});
-          if(note) notes.push(note);
-        }catch(err){ failed.push(f.name); }
-      }
-      if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
-      else if(notes.length) toast(notes.join(' · '));
-      else if(files.length>room) toast('נוספו עד 5 קבצים בלבד (המכסה)');
+      await addGalleryFiles(g, Array.from(e.target.files));
       e.target.value='';
-      renderWorkerGallery(g);
     };
+    attachPasteZone(document.getElementById('paste_'+g.inputId), files=> addGalleryFiles(g, files));
   });
   renderAllWorkerGalleries();
 
@@ -2641,6 +2657,7 @@ function renderDailyLog(main, loadId){
       <h3 style="margin-top:22px;">תיעוד צילומי (עד 5 תמונות ליום)</h3>
       <label for="photoInput" class="btn secondary small no-print" style="display:inline-block; cursor:pointer;">+ הוספת תמונות</label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
+      <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span>
       <div class="hint">התמונות נדחסות אוטומטית ונשמרות בתוך הקובץ המקומי בלבד.</div>
       <div class="photos-grid" id="photosGrid"></div>
     </div>
@@ -2765,10 +2782,10 @@ function renderDailyLog(main, loadId){
   };
   document.getElementById('addVisitor').onclick = ()=>{ draft.visitors.push({id:uid('visitor'), name:'', org:'', purpose:'', instructions:''}); renderVisitorRows(); scheduleAutosave(); };
 
-  document.getElementById('photoInput').onchange = async (e)=>{
-    const files = Array.from(e.target.files);
+  // Shared by the file picker and by paste (Ctrl+V / "הדבק" button, see attachPasteZone)
+  async function addLogPhotos(files){
     const room = 5 - draft.photos.length;
-    if(room<=0){ toast('הגעת למקסימום 5 תמונות ליום'); e.target.value=''; return; }
+    if(room<=0){ toast('הגעת למקסימום 5 תמונות ליום'); return; }
     const failed = [];
     for(const f of files.slice(0, room)){
       try{
@@ -2778,10 +2795,15 @@ function renderDailyLog(main, loadId){
     }
     if(failed.length) toast(`לא הועלו (לא תמונות נתמכות): ${failed.join(', ')}`);
     else if(files.length>room) toast('נוספו עד 5 תמונות בלבד (המגבלה היומית)');
-    e.target.value='';
     renderPhotos();
     scheduleAutosave();
+  }
+  document.getElementById('photoInput').onchange = async (e)=>{
+    const files = Array.from(e.target.files);
+    await addLogPhotos(files);
+    e.target.value='';
   };
+  attachPasteZone(document.getElementById('photosPasteZone'), addLogPhotos);
 
   document.getElementById('saveLog').onclick = ()=>{
     if(activeLogMergeConflicts && activeLogMergeConflicts.length){ toast('יש לפתור קודם את ההתנגשויות המסומנות למעלה'); return; }
@@ -3483,6 +3505,55 @@ function compressImage(file, maxDim, quality, allowTall){
     reader.readAsDataURL(file);
   });
 }
+
+/* ===================== Paste-to-upload (08-09.10.2026) =====================
+   Any upload field can also take an image straight from the clipboard (a screenshot, a copied
+   picture, or a file copied in Explorer - PDFs included where the field accepts them), not just via
+   the file picker. Each field gets a small "📋 הדבק" box (.paste-zone). Two ways to use it:
+   - click it: the browser is asked (once, Chrome/Edge show a permission prompt) to read the
+     clipboard directly, and whatever image is there is uploaded;
+   - or focus it (click) and press Ctrl+V - one document-level paste listener routes the pasted files
+     to whichever zone currently has focus, so there's no per-field listener to leak across re-renders.
+   Both end up in the SAME function the file picker uses (onFiles), so limits, compression, PDF
+   conversion and error messages are identical. */
+function filesFromClipboardData(cd){
+  const out = [];
+  if(!cd) return out;
+  if(cd.files && cd.files.length) out.push(...Array.from(cd.files));
+  else if(cd.items) Array.from(cd.items).forEach(it=>{ if(it.kind==='file'){ const f = it.getAsFile(); if(f) out.push(f); } });
+  return out.filter(f=> /^image\//.test(f.type) || f.type==='application/pdf');
+}
+function attachPasteZone(zone, onFiles){
+  if(!zone) return;
+  zone.__onFiles = onFiles;
+  zone.onclick = async ()=>{
+    zone.focus();
+    if(navigator.clipboard && navigator.clipboard.read){
+      try{
+        const items = await navigator.clipboard.read();
+        const files = [];
+        for(const it of items){
+          const type = it.types.find(t=>/^image\//.test(t));
+          if(type){ const b = await it.getType(type); files.push(new File([b], 'pasted-'+Date.now()+'.'+(type.split('/')[1]||'png'), {type})); }
+        }
+        if(files.length){ await onFiles(files); return; }
+        toast('אין תמונה בלוח - העתק תמונה (למשל צילום מסך) ונסה שוב');
+        return;
+      }catch(e){ /* permission denied or unsupported - fall through to Ctrl+V on the focused box */ }
+    }
+    toast('לחץ Ctrl+V כדי להדביק את התמונה');
+  };
+  zone.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); zone.click(); } });
+}
+document.addEventListener('paste', async e=>{
+  const ae = document.activeElement;
+  const z = ae && ae.closest ? ae.closest('.paste-zone') : null;
+  if(!z || !z.__onFiles) return;
+  e.preventDefault();
+  const files = filesFromClipboardData(e.clipboardData);
+  if(!files.length){ toast('אין תמונה בלוח - העתק תמונה (למשל צילום מסך) ונסה שוב'); return; }
+  await z.__onFiles(files);
+});
 
 /* ===================== PDF document uploads (worker documents only) ===================== */
 /* Worker documents (visa/ת.ז/עבודה בגובה/רשיונות נוספים) are frequently scanned/received as PDF
