@@ -258,6 +258,10 @@
     .worker-doc-page{page-break-before:always; break-before:page; margin:0; padding:0; border:none;}
     .worker-doc-page figcaption{font-size:13px; margin-bottom:4px;}
     .worker-doc-page img{max-height:24.5cm;}
+    /* 11.10.2026: the ID/passport photo sits on page 1 right under the details table (instead of
+       leaving the rest of page 1 empty); every other document still starts its own A4 page. */
+    .worker-doc-page.first{page-break-before:avoid; break-before:auto; page-break-inside:avoid; break-inside:avoid; margin-top:6px;}
+    .worker-doc-page.first img{max-height:12.5cm;}
   }
   .subrow{
     display:flex; gap:8px; align-items:flex-end; margin-bottom:8px; flex-wrap:wrap;
@@ -333,6 +337,16 @@
      layout, instead of the single long scrollable list used for on-screen editing (which
      printed as only whatever happened to be visible on screen). Hidden on screen; shown only
      under @media print (see .wc-print-wrap / .wc-onscreen-only there). */
+  /* Report 9 (work cards per contractor): always visible, one card per printed page */
+  .wcr-card{border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:14px; background:#fff;}
+  .wcr-halves{display:flex; gap:16px; align-items:flex-start; margin-top:8px;}
+  .wcr-details td{padding:3px 8px; border:1px solid var(--border); font-size:13px;}
+  .wcr-details td:nth-child(odd){background:#FAFBFC; font-weight:bold; width:18%;}
+  @media print{
+    .wcr-card{border:none; padding:0; margin:0; page-break-inside:avoid; break-inside:avoid;}
+    .wcr-card + .wcr-card{page-break-before:always; break-before:page;}
+    .wcr-halves{display:flex !important;}
+  }
   .wc-print-wrap{display:none;}
   .wc-print-half{flex:1; min-width:0;}
   .wc-print-half table{width:100%; border-collapse:collapse;}
@@ -2344,6 +2358,10 @@ function renderWorkerPrintView(main, workerId){
     ...(w.additionalLicenses||[]).map(l=>({label:'רשיון נוסף' + (l.caption?(': '+l.caption):''), src:l.dataUrl})),
     ...(w.extraPhotos||[]).map(l=>({label:'תמונה נוספת' + (l.caption?(': '+l.caption):''), src:l.dataUrl}))
   ].filter(d=>d.src);
+  // The ID/passport photo (if any) is printed on page 1 under the details; it is moved to the front.
+  const idIdx = docs.findIndex(d=>d.src===w.idPhoto);
+  if(idIdx>0) docs.unshift(docs.splice(idIdx,1)[0]);
+  const firstIsId = idIdx>=0;
   const detailRow = (label, value)=> `<tr><td>${label}</td><td>${value?esc(value):'—'}</td></tr>`;
   main.innerHTML = `
     <div class="card worker-printout">
@@ -2365,7 +2383,7 @@ function renderWorkerPrintView(main, workerId){
       <h3 style="margin-top:14px;">מסמכים מצולמים</h3>
       ${docs.length===0
         ? '<div class="empty">לא הועלו מסמכים מצולמים לפועל זה.</div>'
-        : `<div class="worker-doc-grid">${docs.map(d=>`<div class="worker-doc-page"><figure><figcaption>${esc(w.name||w.idNumber||'')} · ${esc(d.label)}</figcaption><img src="${d.src}"></figure></div>`).join('')}</div>`}
+        : `<div class="worker-doc-grid">${docs.map((d,i)=>`<div class="worker-doc-page${i===0&&firstIsId?' first':''}"><figure><figcaption>${esc(w.name||w.idNumber||'')} · ${esc(d.label)}</figcaption><img src="${d.src}"></figure></div>`).join('')}</div>`}
     </div>
   `;
   const backBar = document.createElement('div');
@@ -4130,6 +4148,37 @@ function renderWorkCard(main){
 
   renderWorkCardGrid();
 }
+/* The two half-month tables (right = days 1..half, left = the rest) of one worker's card for one
+   month, as HTML. Shared by the single-card print layout (renderWorkCardGrid) and by the
+   "כרטיסי עבודה לקבלן" report (renderWorkCardsReport), so a card looks identical in both. */
+function wcHalvesHtml(workerId, month){
+  const numDays = toolboxDaysInMonth(month);
+  function rowsFor(fromDay, toDay){
+    let out = '';
+    for(let d=fromDay; d<=toDay; d++){
+      const date = `${month}-${String(d).padStart(2,'0')}`;
+      const e = workCardEntry(workerId, date);
+      const wd = new Date(month+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay();
+      const dow = HEBREW_WEEKDAY_SHORT[wd];
+      const satCls = wd===6 ? ' class="wc-saturday"' : '';
+      if(e && e.dayType){
+        const lbl = wcDayTypeLabel(e.dayType) + (e.dayType==='other' && e.dayNote ? ': '+e.dayNote : '');
+        out += `<tr${satCls}><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
+      } else {
+        out += `<tr${satCls}><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+      }
+    }
+    return out;
+  }
+  const halfSplit = Math.ceil(numDays/2);
+  return `
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${rowsFor(1, halfSplit)}</tbody></table>
+      </div>
+      <div class="wc-print-half">
+        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${rowsFor(halfSplit+1, numDays)}</tbody></table>
+      </div>`;
+}
 function renderWorkCardGrid(){
   const body = document.getElementById('wc_body');
   if(!body) return;
@@ -4163,30 +4212,7 @@ function renderWorkCardGrid(){
 
   // Print-only layout: same data split into two half-month tables shown side by side
   // (right = first half, left = second half), instead of the scrollable list above.
-  function printRows(fromDay, toDay){
-    let out = '';
-    for(let d=fromDay; d<=toDay; d++){
-      const date = `${wcMonth}-${String(d).padStart(2,'0')}`;
-      const e = workCardEntry(w.id, date);
-      const dow = HEBREW_WEEKDAY_SHORT[new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()];
-      const satCls = new Date(wcMonth+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6 ? ' class="wc-saturday"' : '';
-      if(e && e.dayType){
-        const lbl = wcDayTypeLabel(e.dayType) + (e.dayType==='other' && e.dayNote ? ': '+e.dayNote : '');
-        out += `<tr${satCls}><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
-      } else {
-        out += `<tr${satCls}><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
-      }
-    }
-    return out;
-  }
-  const halfSplit = Math.ceil(numDays/2);
-  const printHalvesHtml = ()=> `
-      <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(1, halfSplit)}</tbody></table>
-      </div>
-      <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${printRows(halfSplit+1, numDays)}</tbody></table>
-      </div>`;
+  const printHalvesHtml = ()=> wcHalvesHtml(w.id, wcMonth);
 
   body.innerHTML = `
     ${buildPrintHeader()}
@@ -4531,6 +4557,7 @@ function renderReport(main){
         <option value="dailywork" ${selectedReportType==='dailywork'?'selected':''}>דוח פירוט יומיות</option>
         <option value="contractor" ${selectedReportType==='contractor'?'selected':''}>דוח נתוני קבלן</option>
         <option value="toolboxmatrix" ${selectedReportType==='toolboxmatrix'?'selected':''}>דוח מטריצת טולבוקס</option>
+        <option value="workcards" ${selectedReportType==='workcards'?'selected':''}>דוח כרטיסי עבודה לקבלן</option>
         <option value="fulllogs" ${selectedReportType==='fulllogs'?'selected':''}>הדפסת יומנים מלאים לפי טווח</option>
       </select>
     </div>
@@ -4544,6 +4571,7 @@ function renderReport(main){
   else if(selectedReportType==='dailywork'){ renderDailyWorkReport(main); }
   else if(selectedReportType==='contractor'){ renderContractorReport(main); }
   else if(selectedReportType==='toolboxmatrix'){ renderToolboxMatrixReport(main); }
+  else if(selectedReportType==='workcards'){ renderWorkCardsReport(main); }
   else if(selectedReportType==='fulllogs'){ renderFullLogsReport(main); }
   else { renderAttendanceReport(main); }
 }
@@ -5211,6 +5239,93 @@ function renderContractorReport(main){
       <h3 style="margin-top:16px;">תכנון</h3>
       ${simpleTable(planRows, [...baseCols, {key:'description',label:'תיאור'}])}
     `;
+  }
+}
+
+/* ---- Report 9 (11.10.2026): "כרטיסי עבודה לקבלן" - prints the work card of EVERY worker of the
+   chosen contractor (optionally narrowed to one crew) for one month, one card per A4 page, using
+   the same half-month layout as the single-card print (wcHalvesHtml). Workers with no data in the
+   month can be skipped; inactive workers are listed only if they have data in that month. ---- */
+function renderWorkCardsReport(main){
+  const card9 = document.createElement('div');
+  card9.className = 'card';
+  const printableContractors = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).some(cr=>workers.some(w=>w.crewId===cr.id))));
+  card9.innerHTML = `
+    <div class="no-print">
+      <h2>דוח כרטיסי עבודה לקבלן</h2>
+      ${printableContractors.length===0?'<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>':`
+      <div class="searchbar">
+        <div><label>קבלן משנה *</label><select id="r9_contractor" class="searchable"><option value="">בחר קבלן...</option>${printableContractors.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label>הצוות (אם צריך)</label><select id="r9_crew" class="searchable"><option value="">כל הקבוצות</option></select></div>
+        <div><label>חודש *</label><input type="month" id="r9_month" value="${todayStr().slice(0,7)}"></div>
+      </div>
+      <label style="display:flex; gap:6px; align-items:center; margin-bottom:10px;"><input type="checkbox" id="r9_skipEmpty"> דלג על פועלים ללא נתונים בחודש</label>
+      <div class="row-actions">
+        <button class="btn" id="r9_go">הפק דוח</button>
+        <button class="btn secondary" id="r9_pdf">ייצוא ל-PDF (הדפסה)</button>
+      </div>
+      <div id="r9_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
+      `}
+    </div>
+    ${printableContractors.length===0?'':'<div id="r9_out" style="margin-top:8px;"></div>'}
+    <div class="note no-print" style="margin-top:12px;">מדפיס את כרטיס העבודה (שעות כניסה/יציאה וסימוני חג/חופש/מחלה) של כל פועלי הקבלן שנבחר לחודש שנבחר - כרטיס אחד בכל עמוד. אפשר לצמצם לקבוצה אחת.</div>
+  `;
+  main.appendChild(card9);
+  if(printableContractors.length===0) return;
+
+  const contractorEl = document.getElementById('r9_contractor');
+  const crewEl = document.getElementById('r9_crew');
+  contractorEl.onchange = ()=>{
+    const crewOpts = contractorEl.value ? crewsForContractor(contractorEl.value).filter(cr=>workers.some(w=>w.crewId===cr.id)) : [];
+    crewEl.innerHTML = '<option value="">כל הקבוצות</option>' + crewOpts.map(cr=>`<option value="${cr.id}">${esc(cr.name)}</option>`).join('');
+  };
+  document.getElementById('r9_go').onclick = build;
+  document.getElementById('r9_pdf').onclick = ()=>{ build(); if(document.querySelector('#r9_out .wcr-card')) window.print(); };
+
+  function build(){
+    const contractorId = contractorEl.value;
+    const crewId = crewEl.value;
+    const month = document.getElementById('r9_month').value;
+    const skipEmpty = document.getElementById('r9_skipEmpty').checked;
+    const titleBox = document.getElementById('r9_title');
+    const out = document.getElementById('r9_out');
+    if(!contractorId || !month){ out.innerHTML = '<div class="empty no-print">יש לבחור קבלן וחודש כדי להפיק את הדוח.</div>'; titleBox.textContent=''; return; }
+    const c = contractors.find(x=>x.id===contractorId);
+    const crewList = crewId ? crews.filter(cr=>cr.id===crewId) : crewsForContractor(contractorId);
+    const numDays = toolboxDaysInMonth(month);
+    const hasData = w=>{
+      for(let d=1; d<=numDays; d++){ if(workCardEntry(w.id, `${month}-${String(d).padStart(2,'0')}`)) return true; }
+      return false;
+    };
+    const cards = [];
+    crewList.forEach(cr=>{
+      sortWorkersAlpha(workers.filter(w=>w.crewId===cr.id)).forEach(w=>{
+        const data = hasData(w);
+        if(w.active===false && !data) return;
+        if(skipEmpty && !data) return;
+        cards.push({w, cr});
+      });
+    });
+    titleBox.textContent = `כרטיסי עבודה: ${c?c.name:''}${crewId&&crewList[0]?' - '+crewList[0].name:''} - ${month} (${cards.length} כרטיסים)`;
+    if(cards.length===0){ out.innerHTML = '<div class="empty no-print">אין פועלים תואמים לסינון שנבחר.</div>'; return; }
+    out.innerHTML = cards.map(({w, cr})=>{
+      const t = computeWorkCardTotals(w.id, month);
+      const typeParts = WC_DAY_TYPES.filter(x=>t.types[x.id]).map(x=>`${x.label}: ${t.types[x.id]}`);
+      return `
+        <div class="wcr-card">
+          ${buildPrintHeader()}
+          <h3 style="margin:4px 0 8px;">כרטיס עבודה - ${esc(month)}</h3>
+          <table class="log-table wcr-details"><tbody>
+            <tr><td>שם ומשפחה</td><td>${esc(w.name||'—')}${w.active===false?' (לא פעיל)':''}</td><td>ת.ז / דרכון</td><td>${esc(w.idNumber||'—')}</td></tr>
+            <tr><td>קבלן משנה</td><td>${esc(c?c.name:'')}</td><td>קבוצה</td><td>${esc(cr.name||'')}</td></tr>
+          </tbody></table>
+          <div class="wcr-halves">${wcHalvesHtml(w.id, month)}</div>
+          <table class="log-table wcr-details" style="margin-top:8px;"><tbody>
+            <tr><td>ימים</td><td>${t.days}</td><td>סה"כ שעות</td><td>${Math.round(t.hours*100)/100}</td></tr>
+            <tr><td>ימים מסומנים</td><td colspan="3">${typeParts.length?esc(typeParts.join(' · ')):'—'}</td></tr>
+          </tbody></table>
+        </div>`;
+    }).join('');
   }
 }
 
