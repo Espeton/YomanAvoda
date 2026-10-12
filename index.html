@@ -1955,13 +1955,21 @@ function renderCrews(main){
 
 // The "ניהול פועלים בקבוצה" screen: has its own contractor picker (the crews screen's picker isn't
 // on this page any more), sharing selectedCrewsContractorId with it.
+// 12.10.2026: a contractor marked "לא פעיל" in "ניהול קבלני משנה" is not offered here at all (so its
+// crews/workers aren't shown either); marking it active again brings it back.
 function renderWorkersScreen(main){
-  if(!ensureSelectedContractor()){
+  const activeContractors = sortContractorsAlpha(contractors.filter(c=>c.active!==false));
+  if(activeContractors.length===0){
     const card = document.createElement('div');
     card.className = 'card';
-    card.innerHTML = `<h2>ניהול פועלים בקבוצה</h2><div class="note">אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".</div>`;
+    card.innerHTML = `<h2>ניהול פועלים בקבוצה</h2><div class="note">${contractors.length===0 ? 'אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".' : 'כל קבלני המשנה מסומנים "לא פעיל". יש להחזיר קבלן לפעיל במסך "ניהול קבלני משנה".'}</div>`;
     main.appendChild(card);
     return;
+  }
+  if(!activeContractors.find(c=>c.id===selectedCrewsContractorId)){
+    selectedCrewsContractorId = activeContractors[0].id;
+    selectedWorkersCrewId = '';
+    editingWorkerId = null;
   }
   renderWorkers(main, crewsWithGeneralDefault(selectedCrewsContractorId));
 }
@@ -2001,7 +2009,7 @@ function renderWorkers(main, contractorCrews){
     <div class="form-scroll">
     <div class="grid grid-6">
       <div class="field"><label>קבלן משנה</label>
-        <select id="worker_contractor" class="searchable">${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+        <select id="worker_contractor" class="searchable">${sortContractorsAlpha(contractors.filter(c=>c.active!==false)).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
       </div>
       <div class="field"><label>קבוצה</label>
         <select id="worker_crew" class="searchable">${contractorCrews.map(c=>`<option value="${c.id}" ${selectedWorkersCrewId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
