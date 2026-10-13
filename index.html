@@ -204,6 +204,15 @@
   .tbx-matrix .tbx-total-cell{font-weight:bold; background:#FAFBFC; width:36px;}
   .tbx-matrix .tbx-crew-subtotal-row td{background:#EFF6FF; font-weight:bold; color:var(--navy);}
   .tbx-matrix tfoot td{background:#F0F4F8; font-weight:bold;}
+  /* Toolbox-matrix REPORT (14.10.2026): the whole month fits with no inner scrolling - narrower name column
+     (long names wrap instead of being cut), slightly narrower day cells, no max-height box (the page itself scrolls,
+     header row stays pinned under the top bar) and a weekly summary row instead of the per-day footer. */
+  #r8_table .tbx-matrix-wrap{max-height:none; overflow:visible;}
+  #r8_table .tbx-matrix thead th{top: var(--topbar-h, 0px); z-index:90;}
+  #r8_table .tbx-matrix thead .tbx-id-cell, #r8_table .tbx-matrix thead .tbx-name-cell, #r8_table .tbx-matrix thead .tbx-serial-cell{z-index:91;}
+  #r8_table .tbx-matrix .tbx-day-header, #r8_table .tbx-matrix .tbx-cell, #r8_table .tbx-matrix .tbx-crew-day-total{width:21px;}
+  #r8_table .tbx-matrix .tbx-name-cell{width:86px; min-width:86px; white-space:normal; line-height:1.15; font-size:10px;}
+  #r8_table .tbx-matrix .tbx-week-total{background:#E0ECF8; border-inline:2px solid var(--navy);}
   .entity-list{list-style:none; padding:0; margin:0;}
   .entity-list li{
     display:flex; justify-content:space-between; align-items:center;
@@ -490,7 +499,8 @@
     #r8_table .tbx-matrix th, #r8_table .tbx-matrix td{padding:1px 2px !important;}
     #r8_table .tbx-matrix .tbx-day-header, #r8_table .tbx-matrix .tbx-cell, #r8_table .tbx-matrix .tbx-crew-day-total, #r8_table .tbx-matrix .tbx-day-footer{width:19px !important;}
     #r8_table .tbx-matrix .tbx-id-cell{width:60px !important; min-width:60px !important;}
-    #r8_table .tbx-matrix .tbx-name-cell{width:110px !important; min-width:110px !important;}
+    #r8_table .tbx-matrix .tbx-name-cell{width:90px !important; min-width:90px !important;}
+    #r8_table .tbx-matrix .tbx-week-total{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
   }
   /* Google Sign-In gate (Drive-backed version - see section 11 in the spec doc) */
   #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
@@ -1468,7 +1478,7 @@ function render(){
   // The toolbox matrix can have 30+ day-columns - let it use the full window width
   // instead of the app's normal centered 1000px column, so it needs less horizontal
   // scrolling to see the whole table at once. Every other tab keeps the normal width.
-  main.style.maxWidth = (activeTab==='toolbox') ? '100%' : '';
+  main.style.maxWidth = (activeTab==='toolbox' || (activeTab==='report' && selectedReportType==='toolboxmatrix')) ? '100%' : '';
   // "Fixed form + scrolling list" screens use every pixel down to the bottom of the window, with no page scroll
   main.style.paddingBottom = main.querySelector('.card.fill-screen') ? '8px' : '';
   fitFillScreenCards();
@@ -5449,20 +5459,34 @@ function renderToolboxMatrixReport(main){
             }
           });
           grand += rowTotal; crewGrand += rowTotal;
-          rowsHtml += `<tr><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell">${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell">${rowTotal}</td></tr>`;
+          rowsHtml += `<tr><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell" title="${esc(w.name||'')}">${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell">${rowTotal}</td></tr>`;
         });
         const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total${saturdays.has(d)?' tbx-saturday':''}">${crewDayTotals[d]}</td>`).join('');
         rowsHtml += `<tr class="tbx-crew-subtotal-row"><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ קבוצה</td>${crewDayCells}<td class="tbx-crew-grand-total">${crewGrand}</td></tr>`;
       });
     });
-    const footerDayCells = days.map(d=>`<td class="tbx-day-footer${saturdays.has(d)?' tbx-saturday':''}">${dayTotals[d]}</td>`).join('');
+    // Weekly summary (replaces the old per-day "פועלים ליום" footer, 14.10.2026): weeks run Sunday-Saturday
+    // (the blue Saturday column closes each week; the month's first/last week may be partial). Each cell spans
+    // that week's day columns and shows the total worker-days in it, plus the day range.
+    let weekCells = '';
+    for(let i=0; i<days.length; ){
+      let j = i, sum = 0;
+      for(;;){
+        sum += dayTotals[days[j]];
+        if(saturdays.has(days[j]) || j===days.length-1) break;
+        j++;
+      }
+      const range = days[i]===days[j] ? `${days[i]}` : `${days[i]}-${days[j]}`;
+      weekCells += `<td class="tbx-week-total" colspan="${j-i+1}"><div>${sum}</div><div class="tbx-dow">${range}</div></td>`;
+      i = j+1;
+    }
 
     box.innerHTML = `
       <div class="tbx-matrix-wrap">
         <table class="tbx-matrix">
           <thead><tr><th class="tbx-serial-cell">מס"ד</th><th class="tbx-id-cell">ת.ז / דרכון</th><th class="tbx-name-cell">שם</th>${dayHeaderCells}<th>סה"כ</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
-          <tfoot><tr><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">פועלים ליום</td>${footerDayCells}<td>${grand}</td></tr></tfoot>
+          <tfoot><tr><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ שבועי (ימי פועל)</td>${weekCells}<td>${grand}</td></tr></tfoot>
         </table>
       </div>
       <div class="note" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו).</div>
