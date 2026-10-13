@@ -4735,6 +4735,8 @@ function renderAttendanceReport(main){
         <select id="r_project" class="searchable"><option value="">כל הפרויקטים</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
       </div>
       <div><label>תת-פרויקט</label><select id="r_subproject" class="searchable"><option value="">הכל</option></select></div>
+      <div><label>קבלן משנה</label><select id="r_contractor" class="searchable"><option value="">כל הקבלנים</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label>קבוצה</label><select id="r_crew" class="searchable"></select></div>
       <div><label>מתאריך</label><input type="date" id="r_from"></div>
       <div><label>עד תאריך</label><input type="date" id="r_to"></div>
     </div>
@@ -4743,12 +4745,26 @@ function renderAttendanceReport(main){
       <button class="btn secondary" id="r_csv">ייצוא ל-Excel (CSV)</button>
       <button class="btn secondary" id="r_pdf">ייצוא ל-PDF (הדפסה)</button>
     </div>
-    <div id="r_table" style="margin-top:16px;"></div>
+    <div id="r_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
+    <div id="r_table" style="margin-top:8px;"></div>
   `;
   main.appendChild(card);
 
   const rProjectEl = document.getElementById('r_project');
   const rSubProjectEl = document.getElementById('r_subproject');
+  const rContractorEl = document.getElementById('r_contractor');
+  const rCrewEl = document.getElementById('r_crew');
+  // Crew list follows the contractor picked; with "all contractors" every real crew is offered as "קבלן - קבוצה".
+  function fillCrewOptions(){
+    const cid = rContractorEl.value;
+    const list = cid ? crewsForContractor(cid) : sortContractorsAlpha(contractors).flatMap(c=>crewsForContractor(c.id));
+    rCrewEl.innerHTML = '<option value="">כל הקבוצות</option>' + list.map(cr=>{
+      const c = contractors.find(x=>x.id===cr.contractorId);
+      return `<option value="${cr.id}">${cid||!c ? '' : esc(c.name)+' - '}${esc(cr.name)}</option>`;
+    }).join('');
+  }
+  fillCrewOptions();
+  rContractorEl.onchange = fillCrewOptions;
   rProjectEl.onchange = ()=>{
     const opts = sortSubProjectsAlpha(subProjects.filter(sp=>sp.projectId===rProjectEl.value));
     rSubProjectEl.innerHTML = '<option value="">הכל</option>' + opts.map(sp=>`<option value="${sp.id}">${esc(sp.name)}</option>`).join('');
@@ -4765,6 +4781,14 @@ function renderAttendanceReport(main){
     const subProjId = rSubProjectEl.value;
     const from = document.getElementById('r_from').value;
     const to = document.getElementById('r_to').value;
+    const contractorId = rContractorEl.value;
+    const crewId = rCrewEl.value;
+    const crewSel = crewId ? crews.find(x=>x.id===crewId) : null;
+    const contractorSel = contractorId ? contractors.find(x=>x.id===contractorId) : null;
+    const titleParts = [];
+    if(contractorSel) titleParts.push(contractorSel.name);
+    if(crewSel) titleParts.push(crewSel.name);
+    document.getElementById('r_title').textContent = titleParts.length ? 'סינון: ' + titleParts.join(' - ') : '';
     const filtered = logs.filter(l=>{
       if(l.deleted) return false;
       if(pid && l.projectId!==pid) return false;
@@ -4777,8 +4801,10 @@ function renderAttendanceReport(main){
     filtered.forEach(l=>{
       (l.attendance||[]).forEach(a=>{
         if(!a.contractorId) return;
+        if(contractorId && a.contractorId!==contractorId) return;
+        if(crewId && a.crewId!==crewId) return;
         const c = contractors.find(x=>x.id===a.contractorId);
-        const name = c ? c.name : '(קבלן לא ידוע)';
+        const name = (c ? c.name : '(קבלן לא ידוע)');
         if(!byContractor[name]) byContractor[name] = {days:0, workers:0};
         byContractor[name].days += 1;
         byContractor[name].workers += Number(a.workers)||0;
