@@ -1217,9 +1217,20 @@ function buildAttendanceTableHtml(log){
   }).join('');
   return `<table class="log-table"><colgroup><col style="width:65%"><col style="width:35%"></colgroup><thead><tr><th>קבלן משנה</th><th>מספר פועלים</th></tr></thead><tbody>${trs}</tbody></table>`;
 }
+/* "קבלן (קבוצה)" label of a daily-log equipment row (14.10.2026: equipment rows carry contractorId/crewId). */
+function equipmentOwnerLabel(e){
+  const c = e.contractorId ? contractors.find(x=>x.id===e.contractorId) : null;
+  const crew = e.crewId ? crews.find(x=>x.id===e.crewId) : null;
+  return c ? c.name + (crew ? ` (${crew.name})` : '') : '';
+}
 function buildEquipmentTableHtml(log){
   const rows = (log.equipment||[]).filter(e=>e.type || e.count);
   if(rows.length===0) return '<div class="empty">לא נרשמה נוכחות כלי צמ"ה.</div>';
+  // The contractor column is printed only when at least one row has a contractor (older logs print as before).
+  if(rows.some(e=>e.contractorId)){
+    const trs = rows.map(e=>`<tr><td>${esc(e.type||'')}</td><td>${esc(equipmentOwnerLabel(e))}</td><td>${esc(e.count||'')}</td></tr>`).join('');
+    return `<table class="log-table"><colgroup><col style="width:35%"><col style="width:40%"><col style="width:25%"></colgroup><thead><tr><th>סוג הכלי</th><th>קבלן משנה</th><th>מספר יחידות</th></tr></thead><tbody>${trs}</tbody></table>`;
+  }
   const trs = rows.map(e=>`<tr><td>${esc(e.type||'')}</td><td>${esc(e.count||'')}</td></tr>`).join('');
   return `<table class="log-table"><colgroup><col style="width:65%"><col style="width:35%"></colgroup><thead><tr><th>סוג הכלי</th><th>מספר יחידות</th></tr></thead><tbody>${trs}</tbody></table>`;
 }
@@ -2820,7 +2831,7 @@ function renderDailyLog(main, loadId){
   };
 
   document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({id:uid('att'), contractorId:'', workers:'', crewId:''}); renderAttendanceRows(); scheduleAutosave(); };
-  document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({id:uid('equip'), type:'', count:''}); renderEquipmentRows(); scheduleAutosave(); };
+  document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({id:uid('equip'), type:'', count:'', contractorId:'', crewId:''}); renderEquipmentRows(); scheduleAutosave(); };
   document.getElementById('addExecution').onclick = ()=>{
     if(!draft.projectId){ toast('נא לבחור פרויקט תחילה'); return; }
     draft.execution.push({id:uid('exec'), locationId:'', contractorId:'', crewId:'', description:''});
@@ -2906,7 +2917,7 @@ function renderDailyLog(main, loadId){
       if(!confirm('השכפול יחליף את נוכחות הקבלנים, כלי הצמ"ה ורישומי תיעוד הביצוע (מיקום+קבלן) שכבר הוזנו בטופס זה, בנתונים מהיומן שנבחר. להמשיך?')) return;
     }
     draft.attendance = (source.attendance||[]).map(a=>({id:uid('att'), contractorId:a.contractorId||'', workers:a.workers||'', crewId:a.crewId||''}));
-    draft.equipment = (source.equipment||[]).map(e=>({id:uid('equip'), type:e.type||'', count:e.count||''}));
+    draft.equipment = (source.equipment||[]).map(e=>({id:uid('equip'), type:e.type||'', count:e.count||'', contractorId:e.contractorId||'', crewId:e.crewId||''}));
     draft.execution = (source.execution||[]).map(ex=>({id:uid('exec'), locationId:ex.locationId||'', contractorId:ex.contractorId||'', location:ex.location||'', description:''}));
     editingExecContractorRows.clear();
     document.getElementById('cloneLogPicker').style.display = 'none';
@@ -2917,6 +2928,14 @@ function renderDailyLog(main, loadId){
   initSearchableSelects(main);
 }
 
+/* <option>s for a daily-log row's contractor picker (attendance rows and, since 14.10.2026, equipment rows):
+   active contractors only, plus the row's current contractor if it has SINCE been marked inactive. */
+function contractorPickOptionsHtml(selectedId){
+  const active = sortContractorsAlpha(contractors.filter(c=>c.active!==false));
+  const selected = selectedId ? contractors.find(c=>c.id===selectedId) : null;
+  const list = (selected && selected.active===false) ? [selected, ...active] : active;
+  return list.map(c=>`<option value="${c.id}" ${selectedId===c.id?'selected':''}>${esc(c.name)}${c.active===false?' (לא פעיל)':''}</option>`).join('');
+}
 function renderAttendanceRows(){
   const wrap = document.getElementById('attendanceRows');
   if(!wrap) return;
@@ -2926,12 +2945,7 @@ function renderAttendanceRows(){
   // contractor who has SINCE been marked inactive still shows that contractor (labelled), so
   // existing attendance never silently breaks - the row just isn't editable to pick that
   // contractor again once cleared.
-  const activeContractorsSorted = sortContractorsAlpha(contractors.filter(c=>c.active!==false));
-  const contractorOptionsForRow = (selectedId)=>{
-    const selected = selectedId ? contractors.find(c=>c.id===selectedId) : null;
-    const list = (selected && selected.active===false) ? [selected, ...activeContractorsSorted] : activeContractorsSorted;
-    return list.map(c=>`<option value="${c.id}" ${selectedId===c.id?'selected':''}>${esc(c.name)}${c.active===false?' (לא פעיל)':''}</option>`).join('');
-  };
+  const contractorOptionsForRow = contractorPickOptionsHtml;
   // Optional crew selection, same idea as תיעוד ביצוע (section 6.5): shown only for a
   // contractor that has crews defined, and always leavable blank either way. Rendered inline
   // (same row/line as the contractor name, not stacked below it) per user request.
@@ -2995,12 +3009,22 @@ function renderEquipmentRows(){
   else{
     wrap.innerHTML = `
       <table class="log-table has-actions">
-        <colgroup><col style="width:58%"><col style="width:32%"><col style="width:50px"></colgroup>
-        <thead><tr><th>סוג הכלי</th><th>מספר יחידות</th><th></th></tr></thead>
+        <colgroup><col style="width:30%"><col style="width:46%"><col style="width:16%"><col style="width:50px"></colgroup>
+        <thead><tr><th>סוג הכלי</th><th>קבלן משנה</th><th>מספר יחידות</th><th></th></tr></thead>
         <tbody>
           ${draft.equipment.map((row,i)=>`
             <tr>
               <td><input class="eq_type" list="equipmentSuggestions" data-i="${i}" value="${esc(row.type)}" placeholder="לדוגמה: מנוף"></td>
+              <td><div style="display:flex; gap:6px; align-items:center;">
+                <select data-i="${i}" class="eq_c searchable" style="flex:1 1 auto; min-width:0;">
+                  <option value="">בחר...</option>
+                  ${contractorPickOptionsHtml(row.contractorId||'')}
+                </select>${(row.contractorId && crewsForContractor(row.contractorId).length) ? `
+                <select class="eq_crew searchable" data-i="${i}" style="flex:1 1 auto; min-width:0;">
+                  <option value="">ללא קבוצה מסוימת</option>
+                  ${crewsForContractor(row.contractorId).map(cr=>`<option value="${cr.id}" ${row.crewId===cr.id?'selected':''}>${esc(cr.name)}</option>`).join('')}
+                </select>` : ''}
+              </div></td>
               <td><input type="number" min="0" class="eq_count" data-i="${i}" value="${row.count}"></td>
               <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
             </tr>
@@ -3016,8 +3040,16 @@ function renderEquipmentRows(){
     wrap.appendChild(dl);
   }
   wrap.querySelectorAll('.eq_type').forEach(el=>el.oninput = e=>{ draft.equipment[+e.target.dataset.i].type = e.target.value; scheduleAutosave(); });
+  wrap.querySelectorAll('.eq_c').forEach(el=>el.onchange = e=>{
+    const row = draft.equipment[+e.target.dataset.i];
+    row.contractorId = e.target.value;
+    row.crewId = '';
+    renderEquipmentRows(); scheduleAutosave();
+  });
+  wrap.querySelectorAll('.eq_crew').forEach(el=>el.onchange = e=>{ draft.equipment[+e.target.dataset.i].crewId = e.target.value; scheduleAutosave(); });
   wrap.querySelectorAll('.eq_count').forEach(el=>el.oninput = e=>{ draft.equipment[+e.target.dataset.i].count = e.target.value; scheduleAutosave(); });
   wrap.querySelectorAll('.rm-btn').forEach(el=>el.onclick = e=>{ draft.equipment.splice(+e.target.dataset.i,1); renderEquipmentRows(); scheduleAutosave(); });
+  initSearchableSelects(wrap);
 }
 
 /* Groups execution rows by location (rows with no location yet are each
@@ -4576,6 +4608,7 @@ function renderReport(main){
         <option value="contractor" ${selectedReportType==='contractor'?'selected':''}>דוח נתוני קבלן</option>
         <option value="toolboxmatrix" ${selectedReportType==='toolboxmatrix'?'selected':''}>דוח מטריצת טולבוקס</option>
         <option value="workcards" ${selectedReportType==='workcards'?'selected':''}>דוח כרטיסי עבודה לקבלן</option>
+        <option value="equipment" ${selectedReportType==='equipment'?'selected':''}>דוח נוכחות כלי צמ"ה</option>
         <option value="fulllogs" ${selectedReportType==='fulllogs'?'selected':''}>הדפסת יומנים מלאים לפי טווח</option>
       </select>
     </div>
@@ -4590,6 +4623,7 @@ function renderReport(main){
   else if(selectedReportType==='contractor'){ renderContractorReport(main); }
   else if(selectedReportType==='toolboxmatrix'){ renderToolboxMatrixReport(main); }
   else if(selectedReportType==='workcards'){ renderWorkCardsReport(main); }
+  else if(selectedReportType==='equipment'){ renderEquipmentReport(main); }
   else if(selectedReportType==='fulllogs'){ renderFullLogsReport(main); }
   else { renderAttendanceReport(main); }
 }
@@ -4734,6 +4768,15 @@ function renderWorkersAttendanceReport(main){
   }
 }
 
+/* "קבוצה" filter options of a report: the chosen contractor's crews, or - with "all contractors" - every real
+   crew labelled "קבלן - קבוצה". */
+function reportCrewOptionsHtml(contractorId){
+  const list = contractorId ? crewsForContractor(contractorId) : sortContractorsAlpha(contractors).flatMap(c=>crewsForContractor(c.id));
+  return '<option value="">כל הקבוצות</option>' + list.map(cr=>{
+    const c = contractors.find(x=>x.id===cr.contractorId);
+    return `<option value="${cr.id}">${contractorId||!c ? '' : esc(c.name)+' - '}${esc(cr.name)}</option>`;
+  }).join('');
+}
 function renderAttendanceReport(main){
   const card = document.createElement('div');
   card.className='card';
@@ -4765,14 +4808,7 @@ function renderAttendanceReport(main){
   const rContractorEl = document.getElementById('r_contractor');
   const rCrewEl = document.getElementById('r_crew');
   // Crew list follows the contractor picked; with "all contractors" every real crew is offered as "קבלן - קבוצה".
-  function fillCrewOptions(){
-    const cid = rContractorEl.value;
-    const list = cid ? crewsForContractor(cid) : sortContractorsAlpha(contractors).flatMap(c=>crewsForContractor(c.id));
-    rCrewEl.innerHTML = '<option value="">כל הקבוצות</option>' + list.map(cr=>{
-      const c = contractors.find(x=>x.id===cr.contractorId);
-      return `<option value="${cr.id}">${cid||!c ? '' : esc(c.name)+' - '}${esc(cr.name)}</option>`;
-    }).join('');
-  }
+  function fillCrewOptions(){ rCrewEl.innerHTML = reportCrewOptionsHtml(rContractorEl.value); }
   fillCrewOptions();
   rContractorEl.onchange = fillCrewOptions;
   rProjectEl.onchange = ()=>{
@@ -4860,6 +4896,7 @@ function renderLocationReport(main){
       <div><label>מיקום</label><select id="r2_location" class="searchable"><option value="">כל המיקומים בפרויקט</option></select></div>
       <div><label>תת-פרויקט</label><select id="r2_subproject" class="searchable"><option value="">הכל</option></select></div>
       <div><label>קבלן משנה</label><select id="r2_contractor" class="searchable"><option value="">כל הקבלנים</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label>צוות (קבוצה)</label><select id="r2_crew" class="searchable">${reportCrewOptionsHtml('')}</select></div>
       <div><label>מתאריך</label><input type="date" id="r2_from"></div>
       <div><label>עד תאריך</label><input type="date" id="r2_to"></div>
     </div>
@@ -4877,6 +4914,8 @@ function renderLocationReport(main){
   const r2LocationEl = document.getElementById('r2_location');
   const r2SubProjectEl = document.getElementById('r2_subproject');
   const r2ContractorEl = document.getElementById('r2_contractor');
+  const r2CrewEl = document.getElementById('r2_crew');
+  r2ContractorEl.onchange = ()=>{ r2CrewEl.innerHTML = reportCrewOptionsHtml(r2ContractorEl.value); };
   r2ProjectEl.onchange = ()=>{
     const pid = r2ProjectEl.value;
     const opts = sortLocationsAlpha(locations.filter(l=>l.projectId===pid));
@@ -4892,6 +4931,7 @@ function renderLocationReport(main){
     const locId = r2LocationEl.value;
     const subProjId = r2SubProjectEl.value;
     const contractorId = r2ContractorEl.value;
+    const crewId = r2CrewEl.value;
     const from = document.getElementById('r2_from').value;
     const to = document.getElementById('r2_to').value;
     const box = document.getElementById('r2_table');
@@ -4908,6 +4948,7 @@ function renderLocationReport(main){
         (l.execution||[]).forEach(ex=>{
           if(locId && ex.locationId!==locId) return;
           if(contractorId && ex.contractorId!==contractorId) return;
+          if(crewId && ex.crewId!==crewId) return;
           rows.push({
             date: l.date,
             subProject: subProjectText(l),
@@ -4924,12 +4965,14 @@ function renderLocationReport(main){
     const specificLocation = locId ? locations.find(l=>l.id===locId) : null;
     const specificSubProject = subProjId ? subProjects.find(sp=>sp.id===subProjId) : null;
     const specificContractor = contractorId ? contractors.find(c=>c.id===contractorId) : null;
-    if(specificLocation || specificSubProject || specificContractor){
+    const specificCrew = crewId ? crews.find(x=>x.id===crewId) : null;
+    if(specificLocation || specificSubProject || specificContractor || specificCrew){
       const proj = projects.find(p=>p.id===pid);
       const parts = [`דוח ביצוע: ${proj?proj.name:''}`];
       if(specificSubProject) parts.push(specificSubProject.name);
       if(specificLocation) parts.push(`${specificLocation.name} (${specificLocation.type})`);
       if(specificContractor) parts.push(specificContractor.name);
+      if(specificCrew) parts.push(specificCrew.name);
       titleBox.textContent = parts.join(' - ');
     }
     const showLocationColumn = !specificLocation;
@@ -5199,7 +5242,7 @@ function renderContractorReport(main){
       <button class="btn secondary" id="r6_pdf">ייצוא ל-PDF (הדפסה)</button>
     </div>
     <div id="r6_output" style="margin-top:12px;"></div>
-    <div class="note" style="margin-top:12px;">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
+    <div class="note" style="margin-top:12px;">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, כלי צמ"ה, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
   `;
   main.appendChild(card6);
 
@@ -5234,10 +5277,16 @@ function renderContractorReport(main){
     const projCol = {key:'project', label:'פרויקט'};
     const baseCols = showProjectColumn ? [dateCol, projCol] : [dateCol];
 
-    let attendanceRows = [], dwRows = [], execRows = [], excRows = [], planRows = [];
+    let attendanceRows = [], dwRows = [], execRows = [], excRows = [], planRows = [], equipRows = [];
     filteredLogs.forEach(l=>{
       (l.attendance||[]).forEach(a=>{
         if(a.contractorId===contractorId) attendanceRows.push({date:l.date, project:projName(l), workers:Number(a.workers)||0});
+      });
+      (l.equipment||[]).forEach(eq=>{
+        if(eq.contractorId===contractorId && (eq.type||eq.count)){
+          const crew = eq.crewId ? crews.find(x=>x.id===eq.crewId) : null;
+          equipRows.push({date:l.date, project:projName(l), crew:crew?crew.name:'', type:eq.type||'', count:eq.count||''});
+        }
       });
       (l.dailyWork||[]).forEach(dw=>{
         if(dw.contractorId===contractorId) dwRows.push({date:l.date, project:projName(l), days:Number(dw.days)||0, hours:Number(dw.hours)||0, description:dw.description||''});
@@ -5256,7 +5305,7 @@ function renderContractorReport(main){
     const attendanceWorkersTotal = attendanceRows.reduce((s,r)=>s+r.workers,0);
     const dwDaysTotal = dwRows.reduce((s,r)=>s+r.days,0);
     const dwHoursTotal = dwRows.reduce((s,r)=>s+r.hours,0);
-    const hasAnyData = attendanceRows.length || dwRows.length || execRows.length || excRows.length || planRows.length;
+    const hasAnyData = attendanceRows.length || dwRows.length || execRows.length || excRows.length || planRows.length || equipRows.length;
 
     const titleParts = [`דוח נתוני קבלן: ${contractor?contractor.name:''}`];
     if(pid){ const p = projects.find(x=>x.id===pid); if(p) titleParts.push(p.name); }
@@ -5270,6 +5319,9 @@ function renderContractorReport(main){
       <div class="note">${attendanceRows.length} ימי נוכחות · ${attendanceWorkersTotal} סה"כ פועלים (מצטבר)</div>
       ${simpleTable(attendanceRows, [...baseCols, {key:'workers',label:'מספר פועלים'}])}
 
+      <h3 style="margin-top:16px;">נוכחות כלי צמ"ה</h3>
+      ${simpleTable(equipRows, [...baseCols, {key:'crew',label:'קבוצה'}, {key:'type',label:'סוג הכלי'}, {key:'count',label:'מספר יחידות'}])}
+
       <h3 style="margin-top:16px;">יומיות</h3>
       <div class="note">${dwDaysTotal} סה"כ ימי עבודה · ${dwHoursTotal} סה"כ שעות עבודה</div>
       ${simpleTable(dwRows, [...baseCols, {key:'days',label:'ימי עבודה'}, {key:'hours',label:'שעות עבודה'}, {key:'description',label:'פירוט המשימה'}])}
@@ -5282,6 +5334,108 @@ function renderContractorReport(main){
 
       <h3 style="margin-top:16px;">תכנון</h3>
       ${simpleTable(planRows, [...baseCols, {key:'description',label:'תיאור'}])}
+    `;
+  }
+}
+
+/* ---- Report 10 (14.10.2026): "דוח נוכחות כלי צמ"ה" - the equipment rows of the daily logs, found by
+   contractor, crew and date range (project optional). Detail table + a per-tool-type summary. ---- */
+function renderEquipmentReport(main){
+  const card10 = document.createElement('div');
+  card10.className = 'card';
+  card10.innerHTML = `
+    ${buildPrintHeader()}
+    <h2>דוח נוכחות כלי צמ"ה</h2>
+    <div class="searchbar">
+      <div><label>פרויקט</label><select id="r10_project" class="searchable"><option value="">כל הפרויקטים</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+      <div><label>קבלן משנה</label><select id="r10_contractor" class="searchable"><option value="">כל הקבלנים</option>${sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+      <div><label>קבוצה</label><select id="r10_crew" class="searchable">${reportCrewOptionsHtml('')}</select></div>
+      <div><label>מתאריך</label><input type="date" id="r10_from"></div>
+      <div><label>עד תאריך</label><input type="date" id="r10_to"></div>
+    </div>
+    <div class="row-actions">
+      <button class="btn" id="r10_go">הפק דוח</button>
+      <button class="btn secondary" id="r10_csv">ייצוא ל-Excel (CSV)</button>
+      <button class="btn secondary" id="r10_pdf">ייצוא ל-PDF (הדפסה)</button>
+    </div>
+    <div id="r10_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
+    <div id="r10_table" style="margin-top:8px;"></div>
+    <div class="note" style="margin-top:12px;">כלי הצמ"ה שנרשמו ביומנים היומיים (סוג כלי ומספר יחידות לכל קבלן/קבוצה), לפי קבלן, קבוצה וטווח תאריכים. כלי שנרשם ביומן בלי קבלן יופיע רק כשלא מסננים לפי קבלן/קבוצה.</div>
+  `;
+  main.appendChild(card10);
+
+  const projEl = document.getElementById('r10_project');
+  const contractorEl = document.getElementById('r10_contractor');
+  const crewEl = document.getElementById('r10_crew');
+  contractorEl.onchange = ()=>{ crewEl.innerHTML = reportCrewOptionsHtml(contractorEl.value); };
+  let lastRows = [];
+  document.getElementById('r10_go').onclick = build;
+  document.getElementById('r10_pdf').onclick = ()=>{ build(); window.print(); };
+  document.getElementById('r10_csv').onclick = ()=>{
+    build();
+    if(!lastRows.length){ toast('אין נתונים לייצוא'); return; }
+    const q = s=>'"' + String(s==null?'':s).replace(/"/g,'""') + '"';
+    const csv = '﻿' + 'תאריך,פרויקט,קבלן משנה,קבוצה,סוג הכלי,מספר יחידות\n' +
+      lastRows.map(r=>[fmtDate(r.date), r.project, r.contractor, r.crew, r.type, r.count].map(q).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+    a.download = `דוח-כלי-צמה-${todayStr()}.csv`;
+    a.click();
+  };
+  build();
+
+  function build(){
+    const pid = projEl.value, contractorId = contractorEl.value, crewId = crewEl.value;
+    const from = document.getElementById('r10_from').value, to = document.getElementById('r10_to').value;
+    const titleBox = document.getElementById('r10_title');
+    const box = document.getElementById('r10_table');
+    const rows = [];
+    logs.filter(l=>!l.deleted)
+      .filter(l=>!pid || l.projectId===pid)
+      .filter(l=>!from || l.date>=from)
+      .filter(l=>!to || l.date<=to)
+      .forEach(l=>{
+        const p = projects.find(x=>x.id===l.projectId);
+        (l.equipment||[]).forEach(eq=>{
+          if(!(eq.type||eq.count)) return;
+          if(contractorId && eq.contractorId!==contractorId) return;
+          if(crewId && eq.crewId!==crewId) return;
+          const c = eq.contractorId ? contractors.find(x=>x.id===eq.contractorId) : null;
+          const cr = eq.crewId ? crews.find(x=>x.id===eq.crewId) : null;
+          rows.push({date:l.date, project:p?p.name:'—', contractor:c?c.name:'', crew:cr?cr.name:'', type:eq.type||'', count:Number(eq.count)||0});
+        });
+      });
+    rows.sort((a,b)=> a.date.localeCompare(b.date) || a.contractor.localeCompare(b.contractor,'he') || a.type.localeCompare(b.type,'he'));
+    lastRows = rows;
+
+    const titleParts = [];
+    if(pid){ const p = projects.find(x=>x.id===pid); if(p) titleParts.push(p.name); }
+    if(contractorId){ const c = contractors.find(x=>x.id===contractorId); if(c) titleParts.push(c.name); }
+    if(crewId){ const cr = crews.find(x=>x.id===crewId); if(cr) titleParts.push(cr.name); }
+    if(from || to) titleParts.push(`${from?fmtDate(from):'—'} עד ${to?fmtDate(to):'—'}`);
+    titleBox.textContent = titleParts.length ? 'דוח נוכחות כלי צמ"ה: ' + titleParts.join(' - ') : '';
+    if(rows.length===0){ box.innerHTML = '<div class="empty">לא נמצאו רישומי כלי צמ"ה התואמים לסינון.</div>'; return; }
+
+    const showProject = !pid, showContractor = !contractorId, showCrew = !crewId;
+    const byType = new Map();
+    rows.forEach(r=>{
+      const key = r.type || '—';
+      let t = byType.get(key);
+      if(!t){ t = {dates:new Set(), units:0}; byType.set(key, t); }
+      t.dates.add(r.date); t.units += r.count;
+    });
+    const summaryRows = [...byType.entries()].sort((a,b)=>a[0].localeCompare(b[0],'he'))
+      .map(([type,t])=>`<tr><td>${esc(type)}</td><td>${t.dates.size}</td><td>${t.units}</td></tr>`).join('');
+    box.innerHTML = `
+      <table>
+        <thead><tr><th>תאריך</th>${showProject?'<th>פרויקט</th>':''}${showContractor?'<th>קבלן משנה</th>':''}${showCrew?'<th>קבוצה</th>':''}<th>סוג הכלי</th><th>מספר יחידות</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr><td>${fmtDate(r.date)}</td>${showProject?`<td>${esc(r.project)}</td>`:''}${showContractor?`<td>${esc(r.contractor||'—')}</td>`:''}${showCrew?`<td>${esc(r.crew||'—')}</td>`:''}<td>${esc(r.type)}</td><td>${r.count||''}</td></tr>`).join('')}</tbody>
+      </table>
+      <h3 style="margin-top:16px;">סיכום לפי סוג כלי</h3>
+      <table style="max-width:420px;">
+        <thead><tr><th>סוג הכלי</th><th>ימים בטווח</th><th>סה"כ יחידות (מצטבר)</th></tr></thead>
+        <tbody>${summaryRows}</tbody>
+      </table>
     `;
   }
 }
