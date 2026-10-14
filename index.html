@@ -494,7 +494,7 @@
        the generic `table th,td` print padding below is actually WIDER than this table's own
        on-screen padding, so without this override it would eat into the little room there is. */
     @page tbxLandscape{ size: landscape; margin: 10mm; }
-    #r8_table{ page: tbxLandscape; }
+    #r8_print{ page: tbxLandscape; }
     #r8_table .tbx-matrix{font-size:10px !important;}
     #r8_table .tbx-matrix th, #r8_table .tbx-matrix td{padding:1px 2px !important;}
     #r8_table .tbx-matrix .tbx-day-header, #r8_table .tbx-matrix .tbx-cell, #r8_table .tbx-matrix .tbx-crew-day-total, #r8_table .tbx-matrix .tbx-day-footer{width:19px !important;}
@@ -4656,7 +4656,7 @@ function renderWorkersAttendanceReport(main){
     <div id="r7_table" style="margin-top:8px;"></div>
     <div id="r7_summary" style="margin-top:16px;"></div>
     `}
-    <div class="note" style="margin-top:12px;">פירוט הפועלים שסומנו נוכחים בטאב "טולבוקס" עבור קבלן ספציפי, לאורך טווח תאריכים - כולל סיכום ימי נוכחות לכל פועל. רלוונטי רק לקבלנים שהוגדרו להם קבוצות עבודה עם פועלים.</div>
+    <div class="note no-print" style="margin-top:12px;">פירוט הפועלים שסומנו נוכחים בטאב "טולבוקס" עבור קבלן ספציפי, לאורך טווח תאריכים - כולל סיכום ימי נוכחות לכל פועל. רלוונטי רק לקבלנים שהוגדרו להם קבוצות עבודה עם פועלים.</div>
   `;
   main.appendChild(card7);
   if(crewContractors.length===0) return;
@@ -4906,7 +4906,7 @@ function renderLocationReport(main){
     </div>
     <div id="r2_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r2_table" style="margin-top:8px;"></div>
-    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי הביצוע, לאורך טווח תאריכים. כשבוחרים מיקום ו/או קבלן ספציפיים, השם יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
+    <div class="note no-print" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי הביצוע, לאורך טווח תאריכים. כשבוחרים מיקום ו/או קבלן ספציפיים, השם יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card2);
 
@@ -5026,7 +5026,7 @@ function renderExceptionsReport(main){
     </div>
     <div id="r3_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r3_table" style="margin-top:8px;"></div>
-    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל החריגים שנרשמו, לאורך טווח תאריכים. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
+    <div class="note no-print" style="margin-top:12px;">ריכוז כרונולוגי של כל החריגים שנרשמו, לאורך טווח תאריכים. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card3);
 
@@ -5126,7 +5126,7 @@ function renderDailyWorkReport(main){
     <div id="r5_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r5_table" style="margin-top:8px;"></div>
     <div id="r5_summary" style="margin-top:16px;"></div>
-    <div class="note" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי היומיות (עבודות שאינן קשורות לחוזה הישיר), לאורך טווח תאריכים, כולל סיכום ימי עבודה ושעות לתשלום. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
+    <div class="note no-print" style="margin-top:12px;">ריכוז כרונולוגי של כל רישומי היומיות (עבודות שאינן קשורות לחוזה הישיר), לאורך טווח תאריכים, כולל סיכום ימי עבודה ושעות לתשלום. כשבוחרים קבלן ספציפי, שמו יופיע ככותרת הדוח ולא יחזור בכל שורה.</div>
   `;
   main.appendChild(card5);
 
@@ -5242,7 +5242,7 @@ function renderContractorReport(main){
       <button class="btn secondary" id="r6_pdf">ייצוא ל-PDF (הדפסה)</button>
     </div>
     <div id="r6_output" style="margin-top:12px;"></div>
-    <div class="note" style="margin-top:12px;">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, כלי צמ"ה, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
+    <div class="note no-print" style="margin-top:12px;">ריכוז כל הנתונים הקיימים ביומנים עבור קבלן ספציפי, לאורך טווח תאריכים: נוכחות, כלי צמ"ה, יומיות, תיעוד ביצוע, חריגים ותכנון - הכל במקום אחד.</div>
   `;
   main.appendChild(card6);
 
@@ -5360,7 +5360,7 @@ function renderEquipmentReport(main){
     </div>
     <div id="r10_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
     <div id="r10_table" style="margin-top:8px;"></div>
-    <div class="note" style="margin-top:12px;">כלי הצמ"ה שנרשמו ביומנים היומיים (סוג כלי ומספר יחידות לכל קבלן/קבוצה), לפי קבלן, קבוצה וטווח תאריכים. כלי שנרשם ביומן בלי קבלן יופיע רק כשלא מסננים לפי קבלן/קבוצה.</div>
+    <div class="note no-print" style="margin-top:12px;">כלי הצמ"ה שנרשמו ביומנים היומיים (סוג כלי ומספר יחידות לכל קבלן/קבוצה), לפי קבלן, קבוצה וטווח תאריכים. כלי שנרשם ביומן בלי קבלן יופיע רק כשלא מסננים לפי קבלן/קבוצה.</div>
   `;
   main.appendChild(card10);
 
@@ -5536,24 +5536,29 @@ function renderToolboxMatrixReport(main){
   const card8 = document.createElement('div');
   card8.className = 'card';
   const printableContractors = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).length>0));
+  // Print layout (14.10.2026): the screen-only parts (h2, filters, buttons) are no-print, and the company header +
+  // report title + table all sit in ONE landscape wrapper (#r8_print), so the printout is a single flow with no
+  // separate portrait cover page before it and no portrait notes page after it.
   card8.innerHTML = `
-    ${buildPrintHeader()}
-    <h2>דוח מטריצת טולבוקס</h2>
+    <h2 class="no-print">דוח מטריצת טולבוקס</h2>
     ${printableContractors.length===0?'<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>':`
-    <div class="searchbar">
+    <div class="searchbar no-print">
       <div><label>פרויקט *</label><select id="r8_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
       <div><label>חודש *</label><input type="month" id="r8_month" value="${todayStr().slice(0,7)}"></div>
       <div><label>קבלן משנה</label><select id="r8_contractor" class="searchable"><option value="">כל הקבלנים</option>${printableContractors.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
       <div><label>קבוצה</label><select id="r8_crew" class="searchable"><option value="">כל הקבוצות</option></select></div>
     </div>
-    <div class="row-actions">
+    <div class="row-actions no-print">
       <button class="btn" id="r8_go">הפק דוח</button>
       <button class="btn secondary" id="r8_pdf">ייצוא ל-PDF (הדפסה)</button>
     </div>
-    <div id="r8_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
-    <div id="r8_table" style="margin-top:8px;"></div>
+    <div id="r8_print">
+      ${buildPrintHeader()}
+      <div id="r8_title" style="margin-top:10px; font-weight:bold; color:var(--navy-dark); font-size:14px;"></div>
+      <div id="r8_table" style="margin-top:8px;"></div>
+    </div>
     `}
-    <div class="note" style="margin-top:12px;">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או קבוצה ספציפיים.</div>
+    <div class="note no-print" style="margin-top:12px;">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או קבוצה ספציפיים.</div>
   `;
   main.appendChild(card8);
   if(printableContractors.length===0) return;
@@ -5643,7 +5648,7 @@ function renderToolboxMatrixReport(main){
           <tfoot><tr><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ שבועי (ימי פועל)</td>${weekCells}<td>${grand}</td></tr></tfoot>
         </table>
       </div>
-      <div class="note" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו).</div>
+      <div class="note no-print" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו).</div>
     `;
   }
 }
@@ -5669,7 +5674,7 @@ function renderFullLogsReport(main){
       <button class="btn" id="r4_go">הפק ותצוגה מקדימה</button>
     </div>
     <div id="r4_summary" style="margin-top:12px;"></div>
-    <div class="note" style="margin-top:12px;">בניגוד לדוחות האחרים (שמסכמים נתונים), האפשרות הזו מדפיסה את היומנים היומיים המלאים עצמם - כל הסעיפים, בדיוק כפי שהם נראים ביומן יומי - עבור כל התאריכים בטווח שנבחר.</div>
+    <div class="note no-print" style="margin-top:12px;">בניגוד לדוחות האחרים (שמסכמים נתונים), האפשרות הזו מדפיסה את היומנים היומיים המלאים עצמם - כל הסעיפים, בדיוק כפי שהם נראים ביומן יומי - עבור כל התאריכים בטווח שנבחר.</div>
   `;
   main.appendChild(card4);
 
