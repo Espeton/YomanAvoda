@@ -1209,13 +1209,15 @@ function buildCompanyInfoLine(){
 function buildAttendanceTableHtml(log){
   const rows = (log.attendance||[]).filter(a=>a.contractorId || a.workers);
   if(rows.length===0) return '<div class="empty">לא נרשמה נוכחות קבלנים.</div>';
+  // Columns: קבלן משנה / צוות / מספר פועלים (centered) / הערות (only when at least one row has a note)
+  const hasNotes = rows.some(a=>a.note);
   const trs = rows.map(a=>{
     const c = contractors.find(x=>x.id===a.contractorId);
     const crew = a.crewId ? crews.find(x=>x.id===a.crewId) : null;
-    const label = (c?c.name:'—') + (crew?` (${crew.name})`:'');
-    return `<tr><td>${esc(label)}</td><td>${esc(a.workers||'')}</td></tr>`;
+    return `<tr><td>${esc(c?c.name:'—')}</td><td>${esc(crew?crew.name:'')}</td><td style="text-align:center;">${esc(a.workers||'')}</td>${hasNotes?`<td>${esc(a.note||'')}</td>`:''}</tr>`;
   }).join('');
-  return `<table class="log-table"><colgroup><col style="width:65%"><col style="width:35%"></colgroup><thead><tr><th>קבלן משנה</th><th>מספר פועלים</th></tr></thead><tbody>${trs}</tbody></table>`;
+  const cols = hasNotes ? '<col style="width:30%"><col style="width:22%"><col style="width:12%"><col>' : '<col style="width:45%"><col style="width:35%"><col style="width:20%">';
+  return `<table class="log-table"><colgroup>${cols}</colgroup><thead><tr><th>קבלן משנה</th><th>צוות</th><th>מספר פועלים</th>${hasNotes?'<th>הערות</th>':''}</tr></thead><tbody>${trs}</tbody></table>`;
 }
 /* "קבלן (קבוצה)" label of a daily-log equipment row (14.10.2026: equipment rows carry contractorId/crewId). */
 function equipmentOwnerLabel(e){
@@ -2830,7 +2832,7 @@ function renderDailyLog(main, loadId){
     scheduleAutosave();
   };
 
-  document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({id:uid('att'), contractorId:'', workers:'', crewId:''}); renderAttendanceRows(); scheduleAutosave(); };
+  document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({id:uid('att'), contractorId:'', workers:'', crewId:'', note:''}); renderAttendanceRows(); scheduleAutosave(); };
   document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({id:uid('equip'), type:'', count:'', contractorId:'', crewId:''}); renderEquipmentRows(); scheduleAutosave(); };
   document.getElementById('addExecution').onclick = ()=>{
     if(!draft.projectId){ toast('נא לבחור פרויקט תחילה'); return; }
@@ -2916,7 +2918,7 @@ function renderDailyLog(main, loadId){
     if(draftHasContent()){
       if(!confirm('השכפול יחליף את נוכחות הקבלנים, כלי הצמ"ה ורישומי תיעוד הביצוע (מיקום+קבלן) שכבר הוזנו בטופס זה, בנתונים מהיומן שנבחר. להמשיך?')) return;
     }
-    draft.attendance = (source.attendance||[]).map(a=>({id:uid('att'), contractorId:a.contractorId||'', workers:a.workers||'', crewId:a.crewId||''}));
+    draft.attendance = (source.attendance||[]).map(a=>({id:uid('att'), contractorId:a.contractorId||'', workers:a.workers||'', crewId:a.crewId||'', note:''}));
     draft.equipment = (source.equipment||[]).map(e=>({id:uid('equip'), type:e.type||'', count:e.count||'', contractorId:e.contractorId||'', crewId:e.crewId||''}));
     draft.execution = (source.execution||[]).map(ex=>({id:uid('exec'), locationId:ex.locationId||'', contractorId:ex.contractorId||'', location:ex.location||'', description:''}));
     editingExecContractorRows.clear();
@@ -2949,12 +2951,14 @@ function renderAttendanceRows(){
   // Optional crew selection, same idea as תיעוד ביצוע (section 6.5): shown only for a
   // contractor that has crews defined, and always leavable blank either way. Rendered inline
   // (same row/line as the contractor name, not stacked below it) per user request.
+  // 14.10.2026: its own "צוות" column (with a header) instead of sharing the contractor cell, plus a
+  // free-text "הערות" column; "מספר פועלים" is only as wide as its header, centered.
   const crewCellHtml = (row, i)=>{
     if(!row.contractorId) return '';
     const crewOpts = crewsForContractor(row.contractorId);
     if(crewOpts.length===0) return '';
     return `
-      <select class="att_crew searchable" data-i="${i}" style="flex:1 1 auto; min-width:0;">
+      <select class="att_crew searchable" data-i="${i}" style="width:100%; min-width:0;">
         <option value="">ללא קבוצה מסוימת</option>
         ${crewOpts.map(cr=>`<option value="${cr.id}" ${row.crewId===cr.id?'selected':''}>${esc(cr.name)}</option>`).join('')}
       </select>
@@ -2962,18 +2966,20 @@ function renderAttendanceRows(){
   };
   wrap.innerHTML = `
     <table class="log-table has-actions">
-      <colgroup><col style="width:55%"><col style="width:*"><col style="width:50px"></colgroup>
-      <thead><tr><th>קבלן משנה</th><th>מספר פועלים</th><th></th></tr></thead>
+      <colgroup><col style="width:30%"><col style="width:26%"><col style="width:96px"><col><col style="width:50px"></colgroup>
+      <thead><tr><th>קבלן משנה</th><th>צוות</th><th>מספר פועלים</th><th>הערות</th><th></th></tr></thead>
       <tbody>
         ${draft.attendance.map((row,i)=>`
           <tr>
-            <td><div style="display:flex; gap:6px; align-items:center;">
-              <select data-i="${i}" class="att_c searchable" style="flex:1 1 auto; min-width:0;">
+            <td>
+              <select data-i="${i}" class="att_c searchable" style="width:100%; min-width:0;">
                 <option value="">בחר...</option>
                 ${contractorOptionsForRow(row.contractorId)}
-              </select>${crewCellHtml(row, i)}
-            </div></td>
-            <td><input type="number" min="0" class="att_w" data-i="${i}" value="${esc(row.workers)}"></td>
+              </select>
+            </td>
+            <td>${crewCellHtml(row, i)}</td>
+            <td><input type="number" min="0" class="att_w" data-i="${i}" value="${esc(row.workers)}" style="text-align:center;"></td>
+            <td><input type="text" class="att_note" data-i="${i}" value="${esc(row.note||'')}"></td>
             <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
           </tr>
         `).join('')}
@@ -2993,6 +2999,7 @@ function renderAttendanceRows(){
     scheduleAutosave();
   });
   wrap.querySelectorAll('.att_w').forEach(el=>el.oninput = e=>{ draft.attendance[+e.target.dataset.i].workers = e.target.value; scheduleAutosave(); });
+  wrap.querySelectorAll('.att_note').forEach(el=>el.oninput = e=>{ draft.attendance[+e.target.dataset.i].note = e.target.value; scheduleAutosave(); });
   wrap.querySelectorAll('.rm-btn').forEach(el=>el.onclick = e=>{
     draft.attendance.splice(+e.target.dataset.i,1);
     renderAttendanceRows();
