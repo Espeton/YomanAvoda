@@ -1980,12 +1980,17 @@ function renderCrews(main){
 // on this page any more), sharing selectedCrewsContractorId with it.
 // 12.10.2026: a contractor marked "לא פעיל" in "ניהול קבלני משנה" is not offered here at all (so its
 // crews/workers aren't shown either); marking it active again brings it back.
+// 14.10.2026: only contractors that actually have a crew created in "ניהול קבוצות עבודה" are offered (a contractor
+// with no crew no longer appears here with a virtual "כללי" crew) - workers can only be added to a real crew.
+function workersScreenContractors(){
+  return sortContractorsAlpha(contractors.filter(c=>c.active!==false && crewsForContractor(c.id).length>0));
+}
 function renderWorkersScreen(main){
-  const activeContractors = sortContractorsAlpha(contractors.filter(c=>c.active!==false));
+  const activeContractors = workersScreenContractors();
   if(activeContractors.length===0){
     const card = document.createElement('div');
     card.className = 'card';
-    card.innerHTML = `<h2>ניהול פועלים בקבוצה</h2><div class="note">${contractors.length===0 ? 'אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".' : 'כל קבלני המשנה מסומנים "לא פעיל". יש להחזיר קבלן לפעיל במסך "ניהול קבלני משנה".'}</div>`;
+    card.innerHTML = `<h2>ניהול פועלים בקבוצה</h2><div class="note">${contractors.length===0 ? 'אין עדיין קבלני משנה במערכת. יש להוסיף קבלן תחילה במסך "ניהול קבלני משנה".' : 'אין קבלן פעיל שהוגדרה לו קבוצת עבודה. יש ליצור קבוצה במסך "ניהול קבוצות עבודה" (ולוודא שהקבלן פעיל).'}</div>`;
     main.appendChild(card);
     return;
   }
@@ -1994,7 +1999,7 @@ function renderWorkersScreen(main){
     selectedWorkersCrewId = '';
     editingWorkerId = null;
   }
-  renderWorkers(main, crewsWithGeneralDefault(selectedCrewsContractorId));
+  renderWorkers(main, crewsForContractor(selectedCrewsContractorId));
 }
 
 function renderWorkers(main, contractorCrews){
@@ -2032,7 +2037,7 @@ function renderWorkers(main, contractorCrews){
     <div class="form-scroll">
     <div class="grid grid-6">
       <div class="field"><label>קבלן משנה</label>
-        <select id="worker_contractor" class="searchable">${sortContractorsAlpha(contractors.filter(c=>c.active!==false)).map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+        <select id="worker_contractor" class="searchable">${workersScreenContractors().map(c=>`<option value="${c.id}" ${selectedCrewsContractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
       </div>
       <div class="field"><label>קבוצה</label>
         <select id="worker_crew" class="searchable">${contractorCrews.map(c=>`<option value="${c.id}" ${selectedWorkersCrewId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
