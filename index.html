@@ -2550,7 +2550,11 @@ function newDraft(){
     exceptions:[], planning:[], dailyWork:[], ordersPlaced:[], orders:[], notes:'', siteManagerAtDate:'', signedBy:'', signedAt:''
   };
 }
-const EQUIPMENT_SUGGESTIONS = ['מנוף','מחפרון','מלגזה','בטונדה','משאבת בטון','מדחס','גנרטור','טרקטור'];
+/* Daily-log jobsite photos (15.10.2026): up to 20 per day, compressed a bit harder than before
+   (was 5 photos at 1000px / 0.65) so that the shared Drive file doesn't balloon. Worker documents keep
+   their own, higher quality settings (see compressImage call sites for worker docs). */
+const LOG_PHOTO_MAX = 20, LOG_PHOTO_DIM = 800, LOG_PHOTO_QUALITY = 0.55;
+const EQUIPMENT_SUGGESTIONS =['מנוף','מחפרון','מלגזה','בטונדה','משאבת בטון','מדחס','גנרטור','טרקטור'];
 function updateSiteManagerForDraft(){
   draft.siteManagerAtDate = draft.projectId ? managerAtDate(draft.projectId, draft.date) : '';
 }
@@ -2718,7 +2722,7 @@ function renderDailyLog(main, loadId){
     </div>
 
     <div id="photosSection" class="${draft.photos.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">תיעוד צילומי (עד 5 תמונות ליום)</h3>
+      <h3 style="margin-top:22px;">תיעוד צילומי (עד ${LOG_PHOTO_MAX} תמונות ליום)</h3>
       <label for="photoInput" class="btn secondary small no-print" style="display:inline-block; cursor:pointer;">+ הוספת תמונות</label>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
       <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span>
@@ -2848,17 +2852,17 @@ function renderDailyLog(main, loadId){
 
   // Shared by the file picker and by paste (Ctrl+V / "הדבק" button, see attachPasteZone)
   async function addLogPhotos(files){
-    const room = 5 - draft.photos.length;
-    if(room<=0){ toast('הגעת למקסימום 5 תמונות ליום'); return; }
+    const room = LOG_PHOTO_MAX - draft.photos.length;
+    if(room<=0){ toast(`הגעת למקסימום ${LOG_PHOTO_MAX} תמונות ליום`); return; }
     const failed = [];
     for(const f of files.slice(0, room)){
       try{
-        const dataUrl = await compressImage(f, 1000, 0.65);
+        const dataUrl = await compressImage(f, LOG_PHOTO_DIM, LOG_PHOTO_QUALITY);
         draft.photos.push({ id:uid('photo'), caption:'', dataUrl });
       }catch(err){ failed.push(f.name); }
     }
     if(failed.length) toast(`לא הועלו (לא תמונות נתמכות): ${failed.join(', ')}`);
-    else if(files.length>room) toast('נוספו עד 5 תמונות בלבד (המגבלה היומית)');
+    else if(files.length>room) toast(`נוספו עד ${LOG_PHOTO_MAX} תמונות בלבד (המגבלה היומית)`);
     renderPhotos();
     scheduleAutosave();
   }
