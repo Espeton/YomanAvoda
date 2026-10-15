@@ -282,6 +282,9 @@
   .photo-thumb{position:relative; width:110px;}
   .photo-thumb img{width:110px; height:80px; object-fit:cover; border-radius:6px; border:1px solid var(--border);}
   .photo-thumb input{margin-top:4px; font-size:11px; padding:4px;}
+  /* Daily-log photos ("תיעוד צילומי") are shown twice as large as other thumbnails (15.10.2026): 220x160 on screen, 180x130 printed */
+  .log-photos .photo-thumb{width:220px;}
+  .log-photos .photo-thumb img{width:220px; height:160px;}
   .paste-zone{display:inline-block; margin-top:4px; padding:4px 12px; border:1.5px dashed #94A3B8; border-radius:6px; background:#F8FAFC; color:#475569; font-size:12.5px; cursor:pointer; user-select:none;}
   .paste-zone:hover{border-color:var(--navy); color:var(--navy);}
   .paste-zone:focus{outline:none; border-color:#2563EB; background:#EFF6FF; color:#1E40AF; box-shadow:0 0 0 3px rgba(37,99,235,.2);}
@@ -465,6 +468,8 @@
     .photos-grid{gap:6px !important; margin-top:6px !important;}
     .photo-thumb{width:90px !important;}
     .photo-thumb img{width:90px !important; height:65px !important;}
+    .log-photos .photo-thumb{width:180px !important;}
+    .log-photos .photo-thumb img{width:180px !important; height:130px !important;}
     .print-header{display:flex !important; align-items:center; gap:8px; margin-bottom:4px !important; border-bottom:2px solid var(--navy); padding-bottom:3px;}
     .log-title-row{padding-bottom:1px !important; margin-bottom:2px !important;}
     .log-title-row h2{margin-bottom:0 !important; font-size:13px !important;}
@@ -1262,7 +1267,7 @@ function buildExecutionTableHtml(log){
 function buildPhotosHtml(log){
   const photos = log.photos||[];
   if(photos.length===0) return '';
-  return `<div class="photos-grid">${photos.map(p=>`<div class="photo-thumb"><img src="${p.dataUrl}">${p.caption?`<div class="hint">${esc(p.caption)}</div>`:''}</div>`).join('')}</div>`;
+  return `<div class="photos-grid log-photos">${photos.map(p=>`<div class="photo-thumb"><img src="${p.dataUrl}">${p.caption?`<div class="hint">${esc(p.caption)}</div>`:''}</div>`).join('')}</div>`;
 }
 function buildContractorRowsTableHtml(rows, columnLabel, emptyMessage){
   const normalized = normalizeContractorRows(rows);
@@ -2727,7 +2732,7 @@ function renderDailyLog(main, loadId){
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
       <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span>
       <div class="hint">התמונות נדחסות אוטומטית ונשמרות בתוך הקובץ המקומי בלבד.</div>
-      <div class="photos-grid" id="photosGrid"></div>
+      <div class="photos-grid log-photos" id="photosGrid"></div>
     </div>
 
     <div id="visitorsSection" class="${draft.visitors.length===0?'no-print':''}">
