@@ -633,7 +633,7 @@ function runMigrations(){
    not random, so two browsers backfilling the same untouched legacy row - or this browser and a
    remote payload saved by a not-yet-refreshed older version - agree on the id instead of
    duplicating the row on merge. Also run on the remote/base payloads right before merging. */
-const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
 function normalizeLogsForMerge(logsArr){
   (logsArr||[]).forEach(l=>{
     if(!l) return;
@@ -751,7 +751,7 @@ function mergeRowsById(baseArr, localArr, remoteArr, mergeRowFn){
   });
   return {merged, conflicts};
 }
-const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
 function mergeLogRecord(base, local, remote){ return mergeRecord(base, local, remote, LOG_ARRAY_FIELDS); }
 /* Top-level entry: merges one whole collection (array of records with id - everything in the
    payload except `company`, which is a single record merged directly through mergeRecord). */
@@ -951,7 +951,7 @@ function resolveLogMergeConflict(ref, chosenValue){
   render();
 }
 const LOG_FIELD_LABELS = {
-  weather:'מזג אוויר', companyEmployees:'עובדי חברה', notes:'הערות', signedBy:'נחתם ע"י', signedAt:'נחתם בתאריך',
+  weather:'מזג אוויר', companyEmployees:'עובדי חברה', notes:'הערות', notesPhotos:'תמונות בהערות', signedBy:'נחתם ע"י', signedAt:'נחתם בתאריך',
   siteManagerAtDate:'מנהל עבודה', date:'תאריך', projectId:'פרויקט', subProjectId:'תת-פרויקט', serialNumber:'מספר סידורי',
   attendance:'נוכחות קבלני משנה', equipment:'כלי צמ"ה', execution:'תיעוד ביצוע', photos:'תיעוד צילומי', visitors:'ביקורים באתר',
   exceptions:'חריגים', planning:'תכנון עבודה עתידית', dailyWork:'פירוט יומיות', ordersPlaced:'הזמנות שבוצעו', orders:'הזמנות שהתקבלו',
@@ -1274,9 +1274,14 @@ function buildContractorRowsTableHtml(rows, columnLabel, emptyMessage){
   if(normalized.length===0) return `<div class="empty">${emptyMessage}</div>`;
   const trs = normalized.map(row=>{
     const c = row.contractorId ? contractors.find(x=>x.id===row.contractorId) : null;
-    return `<tr><td>${esc(c?c.name:'—')}</td><td style="white-space:pre-wrap;">${esc(row.description||'')}</td></tr>`;
+    return `<tr><td>${esc(c?c.name:'—')}</td><td style="white-space:pre-wrap;">${esc(row.description||'')}${buildThumbsHtml(row.photos, false)}</td></tr>`;
   }).join('');
   return `<table class="log-table"><colgroup><col style="width:30%"><col style="width:70%"></colgroup><thead><tr><th>קבלן משנה</th><th>${columnLabel}</th></tr></thead><tbody>${trs}</tbody></table>`;
+}
+/* Thumbnail strip for printouts: photos attached to an exception row / to the log's notes (16.10.2026) */
+function buildThumbsHtml(photos, withCaptions){
+  if(!Array.isArray(photos) || photos.length===0) return '';
+  return `<div class="photos-grid log-photos" style="white-space:normal;">${photos.map(p=>`<div class="photo-thumb"><img src="${p.dataUrl}">${withCaptions&&p.caption?`<div class="hint">${esc(p.caption)}</div>`:''}</div>`).join('')}</div>`;
 }
 function buildDailyWorkTableHtml(log){
   const rows = log.dailyWork||[];
@@ -1326,7 +1331,7 @@ function buildLogPrintoutHtml(log){
       ${normalizeContractorRows(log.planning).length?`<h3>תכנון</h3>${buildContractorRowsTableHtml(log.planning,'תכנון','')}`:''}
       ${(log.ordersPlaced&&log.ordersPlaced.length)?`<h3>הזמנות שבוצעו</h3>${buildOrdersPlacedTableHtml(log)}`:''}
       ${(log.orders&&log.orders.length)?`<h3>הזמנות שהתקבלו</h3>${buildOrdersTableHtml(log)}`:''}
-      ${(log.notes&&log.notes.trim())?`<h3>הערות</h3><div style="white-space:pre-wrap;">${esc(log.notes)}</div>`:''}
+      ${((log.notes&&log.notes.trim()) || (log.notesPhotos&&log.notesPhotos.length))?`<h3>הערות</h3>${(log.notes&&log.notes.trim())?`<div style="white-space:pre-wrap;">${esc(log.notes)}</div>`:''}${buildThumbsHtml(log.notesPhotos, true)}`:''}
       ${log.signedBy?`<div class="stamp">נחתם<br><small>${esc(log.signedBy)} · ${log.signedAt}</small></div>`:''}
     </div>
   `;
@@ -2552,13 +2557,54 @@ function newDraft(){
   return {
     id: uid('log'), projectId: defaultProj ? defaultProj.id : '', subProjectId: defaultSubProj ? defaultSubProj.id : '', date: todayStr(),
     weather:'', attendance:[], equipment:[], companyEmployees:'', execution:[], photos:[], visitors:[],
-    exceptions:[], planning:[], dailyWork:[], ordersPlaced:[], orders:[], notes:'', siteManagerAtDate:'', signedBy:'', signedAt:''
+    exceptions:[], planning:[], dailyWork:[], ordersPlaced:[], orders:[], notes:'', notesPhotos:[], siteManagerAtDate:'', signedBy:'', signedAt:''
   };
 }
 /* Daily-log jobsite photos (15.10.2026): up to 20 per day, compressed a bit harder than before
    (was 5 photos at 1000px / 0.65) so that the shared Drive file doesn't balloon. Worker documents keep
    their own, higher quality settings (see compressImage call sites for worker docs). */
 const LOG_PHOTO_MAX = 20, LOG_PHOTO_DIM = 800, LOG_PHOTO_QUALITY = 0.55;
+/* 16.10.2026: photos can also be attached to each "חריגים" row (up to ROW_PHOTO_MAX) and to the "הערות"
+   section of the log (up to NOTES_PHOTO_MAX, log.notesPhotos[]), same compression as the log photos. */
+const ROW_PHOTO_MAX = 5, NOTES_PHOTO_MAX = 10;
+async function addPhotosToList(list, files, max, noun){
+  const room = max - list.length;
+  if(room<=0){ toast(`הגעת למקסימום ${max} תמונות ${noun}`); return; }
+  const failed = [];
+  for(const f of files.slice(0, room)){
+    try{ list.push({id:uid('photo'), caption:'', dataUrl: await compressImage(f, LOG_PHOTO_DIM, LOG_PHOTO_QUALITY)}); }
+    catch(err){ failed.push(f.name); }
+  }
+  if(failed.length) toast(`לא הועלו (לא תמונות נתמכות): ${failed.join(', ')}`);
+  else if(files.length>room) toast(`נוספו עד ${max} תמונות בלבד (${noun})`);
+  scheduleAutosave();
+}
+function renderPhotoThumbs(grid, list, withCaptions, onChange){
+  if(!grid) return;
+  grid.innerHTML = '';
+  list.forEach((ph,i)=>{
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<button type="button" class="rm" data-i="${i}">×</button><img src="${ph.dataUrl}">${withCaptions?`<input placeholder="תיאור קצר" class="ph_cap" data-i="${i}" value="${esc(ph.caption||'')}">`:''}`;
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('.ph_cap').forEach(el=>el.oninput = e=>{ list[+e.target.dataset.i].caption = e.target.value; scheduleAutosave(); });
+  grid.querySelectorAll('.rm').forEach(el=>el.onclick = e=>{ list.splice(+e.target.dataset.i,1); onChange(); scheduleAutosave(); });
+}
+/* "📷 הוסף תמונות" button + file input + paste zone - the add-photos tools shown under a row / section */
+function photoToolsHtml(idPrefix){
+  return `<div class="no-print" style="margin-top:4px;">
+    <label for="${idPrefix}_in" class="btn secondary small" style="display:inline-block; cursor:pointer;">📷 הוספת תמונות</label>
+    <input type="file" id="${idPrefix}_in" accept="image/*" multiple style="display:none;">
+    <span class="paste-zone" id="${idPrefix}_paste" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V">📋 הדבק</span>
+  </div>`;
+}
+function wirePhotoTools(root, idPrefix, getList, max, noun, onChange){
+  const inp = root.querySelector('#'+idPrefix+'_in'), zone = root.querySelector('#'+idPrefix+'_paste');
+  const add = async files=>{ await addPhotosToList(getList(), files, max, noun); onChange(); };
+  if(inp) inp.onchange = async e=>{ const files = Array.from(e.target.files); e.target.value = ''; await add(files); };
+  attachPasteZone(zone, add);
+}
 const EQUIPMENT_SUGGESTIONS =['מנוף','מחפרון','מלגזה','בטונדה','משאבת בטון','מדחס','גנרטור','טרקטור'];
 function updateSiteManagerForDraft(){
   draft.siteManagerAtDate = draft.projectId ? managerAtDate(draft.projectId, draft.date) : '';
@@ -2573,7 +2619,7 @@ function draftHasContent(){
     (draft.companyEmployees&&draft.companyEmployees.trim()) || (draft.planning&&draft.planning.length) ||
     (draft.dailyWork&&draft.dailyWork.length) || (draft.orders&&draft.orders.length) ||
     (draft.ordersPlaced&&draft.ordersPlaced.length) ||
-    (draft.notes&&draft.notes.trim()) || draft.weather);
+    (draft.notes&&draft.notes.trim()) || (draft.notesPhotos&&draft.notesPhotos.length) || draft.weather);
 }
 /* Called after the project or date changes on the daily-log form: prevents two logs
    existing for the same project+date. If a saved log already exists for that
@@ -2659,6 +2705,7 @@ function renderDailyLog(main, loadId){
   if(!Array.isArray(draft.ordersPlaced)) draft.ordersPlaced = [];
   if(typeof draft.companyEmployees !== 'string') draft.companyEmployees = '';
   if(typeof draft.notes !== 'string') draft.notes = '';
+  if(!Array.isArray(draft.notesPhotos)) draft.notesPhotos = [];
   if(!isLoadingExisting && draft.projectId && !draft.siteManagerAtDate){
     updateSiteManagerForDraft();
   }
@@ -2765,12 +2812,14 @@ function renderDailyLog(main, loadId){
       <button class="btn secondary small" id="addOrder">+ הוסף הזמנה שהתקבלה</button>
     </div>
 
-    <div id="notesSection" class="${!draft.notes.trim()?'no-print':''}">
+    <div id="notesSection" class="${(!draft.notes.trim() && draft.notesPhotos.length===0)?'no-print':''}">
       <h3 style="margin-top:22px;">הערות</h3>
       <div class="framed-box">
         <textarea id="notesField" placeholder="הערות כלליות נוספות">${esc(draft.notes)}</textarea>
         <div class="print-mirror" id="notesMirror">${esc(draft.notes)}</div>
       </div>
+      ${photoToolsHtml('notes')}
+      <div class="photos-grid log-photos" id="notesPhotosGrid"></div>
     </div>
 
     <div class="stamp-box">
@@ -2841,10 +2890,16 @@ function renderDailyLog(main, loadId){
   document.getElementById('notesField').oninput = e=>{
     draft.notes = e.target.value;
     document.getElementById('notesMirror').textContent = e.target.value;
-    document.getElementById('notesSection').classList.toggle('no-print', !e.target.value.trim());
+    document.getElementById('notesSection').classList.toggle('no-print', !e.target.value.trim() && draft.notesPhotos.length===0);
     autoGrowTextarea(e.target);
     scheduleAutosave();
   };
+  const renderNotesPhotos = ()=>{
+    renderPhotoThumbs(document.getElementById('notesPhotosGrid'), draft.notesPhotos, true, renderNotesPhotos);
+    document.getElementById('notesSection').classList.toggle('no-print', !draft.notes.trim() && draft.notesPhotos.length===0);
+  };
+  renderNotesPhotos();
+  wirePhotoTools(document.getElementById('notesSection'), 'notes', ()=> draft.notesPhotos, NOTES_PHOTO_MAX, 'בהערות', renderNotesPhotos);
 
   document.getElementById('addAttendance').onclick = ()=>{ draft.attendance.push({id:uid('att'), contractorId:'', workers:'', crewId:'', note:''}); renderAttendanceRows(); scheduleAutosave(); };
   document.getElementById('addEquipment').onclick = ()=>{ draft.equipment.push({id:uid('equip'), type:'', count:'', contractorId:'', crewId:''}); renderEquipmentRows(); scheduleAutosave(); };
@@ -3339,7 +3394,9 @@ function renderExceptionsRows(){
         ${draft.exceptions.map((row,i)=>`
           <tr>
             <td>${contractorCellHtml(row, i)}</td>
-            <td><textarea class="exc_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div></td>
+            <td><textarea class="exc_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div>
+              ${photoToolsHtml('exc'+i)}
+              <div class="photos-grid log-photos" id="exc_grid_${i}"></div></td>
             <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
           </tr>
         `).join('')}
@@ -3367,6 +3424,10 @@ function renderExceptionsRows(){
       autoGrowTextarea(e.target);
       scheduleAutosave();
     };
+  });
+  draft.exceptions.forEach((row,i)=>{
+    renderPhotoThumbs(wrap.querySelector('#exc_grid_'+i), row.photos||[], false, renderExceptionsRows);
+    wirePhotoTools(wrap, 'exc'+i, ()=> draft.exceptions[i].photos || (draft.exceptions[i].photos = []), ROW_PHOTO_MAX, 'לכל חריג', renderExceptionsRows);
   });
   wrap.querySelectorAll('.rm-btn').forEach(el=>el.onclick = e=>{
     draft.exceptions.splice(+e.target.dataset.i,1);
