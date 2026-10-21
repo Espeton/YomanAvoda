@@ -3877,7 +3877,10 @@ function buildToolboxBlankFormHtml(crewIds){
     const body = s.ws.length>0
       ? s.ws.map((w,idx)=>`<tr><td>${idx+1}</td><td>${esc(w.idNumber||'')}</td><td>${esc(w.name||'')}</td><td></td><td></td></tr>`).join('')
       : `<tr><td colspan="5" style="text-align:center; color:var(--muted);">אין פועלים פעילים רשומים בקבוצה זו</td></tr>`;
-    return groupRow + body;
+    // 21.10.2026: two empty numbered rows at the end of every contractor/crew block - for workers who arrive
+    // that same day as new, or who are currently marked inactive.
+    const extra = [1,2].map(i=>`<tr><td>${s.ws.length+i}</td><td></td><td></td><td></td><td></td></tr>`).join('');
+    return groupRow + body + extra;
   }).join('');
   const meta = multi
     ? `<div><b>קבוצות (${sections.length}):</b> ${sections.map(s=>esc((s.c?s.c.name:'—')+' - '+s.cr.name)).join(' · ')}</div>`
