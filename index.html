@@ -625,7 +625,25 @@ function runMigrations(){
      row" between two people's concurrent edits by id instead of by array position, which breaks
      the moment the two sides added/removed rows in different orders). */
   normalizeLogsForMerge(logs);
+  dedupeToolboxRecords();
 }
+/* 21.10.2026: two browsers that each ticked the first box of the same project+date created two separate
+   toolbox records (random ids), and every reader/writer then used only the FIRST one - so the other
+   person's ticks looked "not saved" after a refresh. Collapses duplicates of the same project+date into
+   one record (union of the ticked workers). New records now get a deterministic id (toolboxRecordId) so
+   that can't happen again, and merges treat presentWorkerIds as a set (mergeToolboxRecord). */
+function dedupeToolboxRecords(){
+  const byKey = new Map(), out = [];
+  toolboxRecords.forEach(r=>{
+    if(!r) return;
+    if(!Array.isArray(r.presentWorkerIds)) r.presentWorkerIds = [];
+    const k = r.projectId+'|'+r.date, first = byKey.get(k);
+    if(!first){ byKey.set(k, r); out.push(r); return; }
+    r.presentWorkerIds.forEach(id=>{ if(!first.presentWorkerIds.includes(id)) first.presentWorkerIds.push(id); });
+  });
+  if(out.length !== toolboxRecords.length) toolboxRecords = out;
+}
+const toolboxRecordId = (projectId, date)=> `tbx_${projectId}_${date}`;
 /* Makes a logs array safe for the merge engine: every nested row list really is an array (older
    saved logs can still hold a legacy plain string in exceptions/planning, or lack a list
    entirely - mergeRowsById crashed on those with "filter is not a function", 04.10.2026), and
@@ -755,8 +773,17 @@ const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','notesPh
 function mergeLogRecord(base, local, remote){ return mergeRecord(base, local, remote, LOG_ARRAY_FIELDS); }
 /* Top-level entry: merges one whole collection (array of records with id - everything in the
    payload except `company`, which is a single record merged directly through mergeRecord). */
+/* Toolbox record: presentWorkerIds is merged as a SET (union of what either side ticked, minus anything either
+   side unticked relative to base) instead of one big field, so two people ticking different workers on the
+   same day never overwrite each other. */
+function mergeToolboxRecord(base, local, remote){
+  const {record, conflicts} = mergeRecord(base, local, remote, []);
+  const bs = new Set((base && base.presentWorkerIds) || []), ls = new Set(local.presentWorkerIds || []), rs = new Set(remote.presentWorkerIds || []);
+  record.presentWorkerIds = [...new Set([...ls, ...rs])].filter(id=> !(bs.has(id) && (!ls.has(id) || !rs.has(id))));
+  return {record, conflicts: conflicts.filter(c=>c.field!=='presentWorkerIds')};
+}
 function mergeCollection(name, baseArr, localArr, remoteArr){
-  const rowMerger = name==='logs' ? mergeLogRecord : undefined;
+  const rowMerger = name==='logs' ? mergeLogRecord : name==='toolboxRecords' ? mergeToolboxRecord : undefined;
   return mergeRowsById(baseArr, localArr, remoteArr, rowMerger);
 }
 
@@ -829,6 +856,18 @@ function saveAll(){
   clearTimeout(driveSaveTimer);
   driveSaveTimer = setTimeout(driveSaveNow, 800);
 }
+/* Explicit "💾 שמור" (toolbox / work card, 21.10.2026): skips the 800ms debounce, writes right now and
+   reports clearly whether it reached Drive - the automatic save is silent, so a failure was easy to miss. */
+async function flushSave(){
+  if(!driveFileId){ toast('אין חיבור ל-Drive - נא להתחבר'); return; }
+  if(!driveDirty && !driveSaveInFlight && !driveSavePending){ toast('הכול כבר שמור ב-Drive ✓'); return; }
+  clearTimeout(driveSaveTimer);
+  setDriveStatus('שומר...');
+  const t0 = Date.now();
+  driveSaveNow();
+  while((driveSaveInFlight || driveSavePending) && Date.now()-t0 < 60000) await new Promise(r=>setTimeout(r,150));
+  toast(driveDirty ? '⚠ השמירה לא הושלמה - ראה את ההודעה בחלון או בראש המסך' : 'נשמר ב-Drive ✓');
+}
 /* Deep snapshot of the full payload, taken right after a load or a successful save - the common
    ancestor the next 3-way merge diffs against. JSON round-trip is fine here (everything in the
    payload is itself JSON - no Date objects etc). */
@@ -877,6 +916,7 @@ async function driveSaveNow(){
         acc.set(adoptIdentity(acc.get(), merged));
         conflicts.forEach(c=> otherConflicts.push({collection:name, ...c}));
       });
+      dedupeToolboxRecords();
       const {merged:mergedLogs, conflicts:logConflicts} = mergeCollection('logs', base.logs, logs, remote.logs);
       logs = adoptIdentity(logs, mergedLogs);
       company = mergeRecord(base.company, company, remote.company, []).record;
@@ -2713,11 +2753,21 @@ function renderDailyLog(main, loadId){
 
   const savedAlready = logs.some(l=>l.id===draft.id);
 
+  // Previous / next log arrows (21.10.2026): the neighbouring logs of the same project + sub-project, by date.
+  const siblingLogs = logs.filter(l=>!l.deleted && l.id!==draft.id && l.projectId===draft.projectId && (l.subProjectId||'')===(draft.subProjectId||''))
+    .sort((a,b)=> a.date.localeCompare(b.date));
+  const prevLog = [...siblingLogs].reverse().find(l=> l.date < draft.date) || null;
+  const nextLog = siblingLogs.find(l=> l.date > draft.date) || null;
+
   const card = document.createElement('div');
   card.className='card';
   card.innerHTML = `
     ${buildCompanyInfoLine()}
     ${buildConflictPanelHtml(activeLogMergeConflicts)}
+    <div class="no-print" style="display:flex; justify-content:space-between; gap:8px; margin-bottom:8px;">
+      <button type="button" class="btn secondary small" id="logPrev" ${prevLog?'':'disabled'} title="${prevLog?'היומן הקודם: '+esc(fmtDate(prevLog.date)):'אין יומן קודם'}">→ היומן הקודם${prevLog?' ('+esc(fmtDate(prevLog.date))+')':''}</button>
+      <button type="button" class="btn secondary small" id="logNext" ${nextLog?'':'disabled'} title="${nextLog?'היומן הבא: '+esc(fmtDate(nextLog.date)):'אין יומן הבא'}">${nextLog?'('+esc(fmtDate(nextLog.date))+') ':''}היומן הבא ←</button>
+    </div>
     <div class="log-title-row">
       <h2>יומן עבודה יומי ${draft.serialNumber?('מס\' '+formatSerial(draft.serialNumber)):'<span class="badge gray">טרם הונפק מספר</span>'} ${draft.signedBy? '<span class="badge">נחתם</span>':''}</h2>
       ${buildLogoImg()}
@@ -2966,6 +3016,9 @@ function renderDailyLog(main, loadId){
   };
   document.getElementById('printLog').onclick = ()=>{ window.print(); };
   document.getElementById('saveLogPdf').onclick = ()=>{ window.print(); };
+  const goToLog = target=>{ if(!target) return; flushAutosave(); const app = document.getElementById('app'); app.innerHTML = ''; renderDailyLog(app, target.id); window.scrollTo(0,0); };
+  document.getElementById('logPrev').onclick = ()=> goToLog(prevLog);
+  document.getElementById('logNext').onclick = ()=> goToLog(nextLog);
   document.getElementById('newLog').onclick = ()=>{ flushAutosave(); draft = newDraft(); activeLogMergeConflicts = null; render(); };
 
   document.getElementById('cloneLogBtn').onclick = ()=>{
@@ -3815,6 +3868,7 @@ function renderToolbox(main){
       <div class="field"><label>חודש *</label><input type="month" id="tbx_month" value="${toolboxMonth}"></div>
       <div class="field"><label>חיפוש לפי ת.ז / דרכון</label><input id="tbx_search" placeholder="הקלידו חלק מהמספר..." value="${esc(toolboxSearchQuery)}"></div>
     </div>
+    <div class="row-actions no-print" style="margin-top:0;"><button class="btn" id="tbx_saveBtn">💾 שמור</button><span class="hint" style="align-self:center;">השינויים נשמרים אוטומטית; הכפתור שומר מיד ומאשר שהכול הגיע ל-Drive.</span></div>
     <div id="tbx_body" style="margin-top:8px;"></div>
     ${printableContractors.length>0 ? `
     <div class="row-actions no-print" style="margin-top:18px; border-top:1px dashed var(--border); padding-top:14px;">
@@ -3839,6 +3893,7 @@ function renderToolbox(main){
     <div class="note" style="margin-top:16px;">כלי נפרד לסימון נוכחות פועלים בשם, לפי קבוצת עבודה: פועלים בשורות, ימות החודש בעמודות. <b>בשלב זה זה אינו משפיע</b> על "מספר הפועלים" הרשום בנוכחות קבלני המשנה ביומן העבודה היומי - שילוב בין השניים מתוכנן לשלב מאוחר יותר.</div>
   `;
   main.appendChild(card);
+  document.getElementById('tbx_saveBtn').onclick = flushSave;
   document.getElementById('tbx_project').onchange = e=>{ toolboxProjectId = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_month').onchange = e=>{ if(e.target.value) toolboxMonth = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_search').oninput = e=>{ toolboxSearchQuery = e.target.value; toolboxApplySearchFilter(); };
@@ -4111,7 +4166,7 @@ function toolboxApplySearchFilter(){
 function toolboxTogglePresence(projectId, date, workerId, present){
   let rec = toolboxRecords.find(t=>t.projectId===projectId && t.date===date);
   if(!rec){
-    rec = { id: uid('tbx'), projectId, date, presentWorkerIds: [] };
+    rec = { id: toolboxRecordId(projectId, date), projectId, date, presentWorkerIds: [] };
     toolboxRecords.push(rec);
   }
   if(present){ if(!rec.presentWorkerIds.includes(workerId)) rec.presentWorkerIds.push(workerId); }
@@ -4190,7 +4245,7 @@ function setWorkCardTime(workerId, date, field, value){
   let e = workCardEntry(workerId, date);
   if(!e){
     if(!value) return; // nothing to create if everything is still empty
-    e = {id: uid('wc'), workerId, date, timeIn:'', timeOut:'', dayType:'', dayNote:''};
+    e = {id: `wc_${workerId}_${date}`, workerId, date, timeIn:'', timeOut:'', dayType:'', dayNote:''};
     workCardEntries.push(e);
   }
   e[field] = value;
@@ -4367,7 +4422,7 @@ function renderWorkCardGrid(){
     <div class="grid grid-3" style="margin-top:10px;">
       <div class="field"><label>ימים</label><div class="readonly-field" id="wc_totalDays">0</div></div>
       <div class="field"><label>סה"כ שעות</label><div class="readonly-field" id="wc_totalHours">0</div></div>
-      <div class="row-actions" style="align-items:flex-end;"><button class="btn secondary" id="wc_pdf">ייצוא ל-PDF (הדפסה)</button></div>
+      <div class="row-actions" style="align-items:flex-end;"><button class="btn" id="wc_save">💾 שמור</button><button class="btn secondary" id="wc_pdf">ייצוא ל-PDF (הדפסה)</button></div>
     </div>
     <div class="field" id="wc_typeSummaryWrap" style="margin-top:4px;"><label>ימים מסומנים (חג / חופש / מחלה...)</label><div class="readonly-field" id="wc_typeSummary">—</div></div>
   `;
@@ -4378,6 +4433,7 @@ function renderWorkCardGrid(){
   wcRefreshPrint = ()=>{ const wrap = body.querySelector('.wc-print-wrap'); if(wrap) wrap.innerHTML = printHalvesHtml(); };
   document.getElementById('wc_month').onchange = e=>{ if(e.target.value){ wcMonth = e.target.value; renderWorkCardGrid(); } };
   document.getElementById('wc_pdf').onclick = ()=> window.print();
+  document.getElementById('wc_save').onclick = flushSave;
   body.querySelectorAll('.wc_in').forEach(el=>{
     el.onchange = e=>{ setWorkCardTime(w.id, e.target.dataset.date, 'timeIn', e.target.value); recomputeWorkCardTotals(w.id); };
   });
