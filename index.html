@@ -1810,6 +1810,15 @@ function equipmentDateStatus(dateStr, today){
   if(dateStr < today) return 'expired';
   return dateStr <= addDaysStr(today, EXPIRY_SOON_DAYS) ? 'soon' : 'ok';
 }
+/* Required details that are still empty - computed on the fly (never stored), so filling one in clears the flag. */
+function equipmentMissing(e){
+  const out = [];
+  if(!e.contractorId) out.push('שם חברה');
+  if(!(e.type||'').trim()) out.push('סוג כלי');
+  if(!(e.number||'').trim()) out.push('מספר כלי');
+  if(!e.licenseExpiry) out.push('תוקף רישיון');
+  return out;
+}
 function equipmentIssues(e, today){
   const out = [];
   EQUIPMENT_DATE_FIELDS.forEach(f=>{
@@ -1852,7 +1861,7 @@ function renderEquipmentRegistry(main){
         <button class="btn" id="eq_save">${editing?'שמור שינויים':'הוסף כלי'}</button>
         ${editing?'<button class="btn secondary" id="eq_cancel">בטל עריכה</button>':''}
       </div>
-      <div class="note" style="margin-top:12px;">שדות עם * חובה. שאר הפרטים (יצרן/דגם, שלדה, כושר הרמה, ביטוח, בדיקה תקופתית של בודק מוסמך, מפעיל) מומלצים לניהול כלים באתר; תוקף שפג מסומן באדום ותוקף שפג בתוך 7 ימים בצהוב. לגבי הדרישות המדויקות לכל סוג כלי יש להיוועץ בממונה הבטיחות באתר.</div>
+      <div class="note" style="margin-top:12px;">שדות עם * הם הפרטים הנדרשים - אבל אפשר לשמור גם כשחסר אחד מהם: הכלי יסומן ברשימה "⚠ להשלים" עד שהפרט יוזן. שאר הפרטים (יצרן/דגם, שלדה, כושר הרמה, ביטוח, בדיקה תקופתית של בודק מוסמך, מפעיל) מומלצים לניהול כלים באתר; תוקף שפג מסומן באדום ותוקף שפג בתוך 7 ימים בצהוב. לגבי הדרישות המדויקות לכל סוג כלי יש להיוועץ בממונה הבטיחות באתר.</div>
     </div>
     <h3 style="margin-top:18px;">כלים רשומים</h3>
     <div class="no-print" id="eq_listbar" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
@@ -1880,6 +1889,7 @@ function renderEquipmentRegistry(main){
       return ca.localeCompare(cb,'he') || (a.type||'').localeCompare(b.type||'','he') || (a.number||'').localeCompare(b.number||'','he',{numeric:true});
     });
     if(rows.length===0){ listEl.innerHTML = `<div class="empty">${heavyEquipment.length?'אין כלים התואמים לסינון.':'עדיין לא נרשמו כלי צמ"ה.'}</div>`; return; }
+    const incompleteCount = rows.filter(e=>e.active!==false && equipmentMissing(e).length).length;
     const expiredCount = rows.filter(e=>e.active!==false && equipmentIssues(e,today).some(i=>i.status==='expired')).length;
     const dateCell = (e, key)=>{
       const d = e[key], st = equipmentDateStatus(d, today);
@@ -1893,12 +1903,13 @@ function renderEquipmentRegistry(main){
     };
     listEl.innerHTML = `
       ${expiredCount?`<div class="tbx-expired-banner no-print">⚠ ${expiredCount} כלים פעילים עם מסמך שפג תוקפו (נכון להיום).</div>`:''}
+      ${incompleteCount?`<div class="tbx-expired-banner no-print" style="background:#FFFBEB; border-color:#F5D98B; color:#7A5A0A;">📝 ${incompleteCount} כלים עם פרטים חסרים להשלמה.</div>`:''}
       <div style="overflow-x:auto;"><table class="log-table">
         <thead><tr><th>חברה</th><th>סוג כלי</th><th>מספר</th><th>יצרן / דגם</th><th>רישיון</th><th>בדיקה תקופתית</th><th>ביטוח</th><th>מפעיל</th><th class="no-print"></th></tr></thead>
         <tbody>${rows.map(e=>{
           const c = contractors.find(x=>x.id===e.contractorId);
           return `<tr${e.active===false?' style="opacity:.55;"':''}>
-            <td>${esc(c?c.name:'—')}${e.active===false?' <span class="badge gray">לא פעיל</span>':''}</td>
+            <td>${esc(c?c.name:'—')}${e.active===false?' <span class="badge gray">לא פעיל</span>':''}${equipmentMissing(e).length?`<div class="hint" style="color:#B7791F; font-weight:bold;">⚠ להשלים: ${esc(equipmentMissing(e).join(', '))}</div>`:''}</td>
             <td>${esc(e.type||'')}</td><td>${esc(e.number||'')}</td>
             <td>${esc(e.model||'')}${e.capacity?`<div class="hint">${esc(e.capacity)}</div>`:''}${e.serial?`<div class="hint">שלדה: ${esc(e.serial)}</div>`:''}</td>
             <td>${dateCell(e,'licenseExpiry')}</td>
@@ -1929,13 +1940,14 @@ function renderEquipmentRegistry(main){
       model: g('eq_model'), serial: g('eq_serial'), capacity: g('eq_capacity'), inspectionExpiry: g('eq_inspectionExpiry'), inspectionCert: g('eq_inspectionCert'),
       insuranceExpiry: g('eq_insuranceExpiry'), operatorName: g('eq_operatorName'), operatorLicenseExpiry: g('eq_operatorLicenseExpiry'), note: g('eq_note')
     };
-    if(!rec.contractorId){ toast('נא לבחור שם חברה'); return; }
-    if(!rec.type){ toast('נא למלא סוג כלי'); return; }
-    if(!rec.number){ toast('נא למלא מספר כלי'); return; }
-    if(!rec.licenseExpiry){ toast('נא למלא תוקף רישיון'); return; }
-    if(heavyEquipment.some(x=>x.id!==editingEquipmentId && (x.number||'').trim().toLowerCase()===rec.number.toLowerCase())){ toast('כלי עם מספר זה כבר רשום'); return; }
-    if(editing){ Object.assign(editing, rec); editingEquipmentId = null; saveAll(); toast('הכלי עודכן'); }
-    else { heavyEquipment.push({id:uid('eq'), active:true, ...rec}); saveAll(); toast('הכלי נוסף'); }
+    // A missing "required" detail never blocks saving (23.10.2026): the item is saved and flagged "להשלים: ..."
+    // in the list until the detail is filled in. Only a completely empty form is refused.
+    if(!rec.contractorId && !rec.type && !rec.number && !rec.model && !rec.serial){ toast('נא למלא לפחות פרט מזהה אחד (חברה, סוג, מספר...)'); return; }
+    if(rec.number && heavyEquipment.some(x=>x.id!==editingEquipmentId && (x.number||'').trim().toLowerCase()===rec.number.toLowerCase())){ toast('כלי עם מספר זה כבר רשום'); return; }
+    const missing = equipmentMissing(rec);
+    if(editing){ Object.assign(editing, rec); editingEquipmentId = null; saveAll(); }
+    else { heavyEquipment.push({id:uid('eq'), active:true, ...rec}); saveAll(); }
+    toast((editing?'הכלי עודכן':'הכלי נוסף') + (missing.length ? ' - חסר להשלמה: ' + missing.join(', ') : ''));
     render();
   };
   initSearchableSelects(main);
