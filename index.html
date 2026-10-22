@@ -590,6 +590,8 @@ let toolboxRecords = [];
    aren't either) - one entry per worker+date, created lazily only when a time is actually
    entered. See renderWorkCard (section 4.3 in the spec doc - "כרטיס עבודה" tab). */
 let workCardEntries = [];
+/* Registry of heavy mechanical equipment (צמ"ה) per contractor - "קבלני משנה" > "ניהול כלי צמ"ה" (22.10.2026) */
+let heavyEquipment = [];
 const DEFAULT_LOGO = 'data:image/png;base64,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';
 let company = {name:'', license:'', logoDataUrl: DEFAULT_LOGO};
 
@@ -831,12 +833,13 @@ function applyFullData(data){
   workers = Array.isArray(data.workers) ? data.workers : [];
   toolboxRecords = Array.isArray(data.toolboxRecords) ? data.toolboxRecords : [];
   workCardEntries = Array.isArray(data.workCardEntries) ? data.workCardEntries : [];
+  heavyEquipment = Array.isArray(data.heavyEquipment) ? data.heavyEquipment : [];
   company = data.company || {name:'', license:'', logoDataUrl: DEFAULT_LOGO};
   if(!company.logoDataUrl){ company.logoDataUrl = DEFAULT_LOGO; }
   runMigrations();
 }
 function buildFullPayload(){
-  return { exportedAt:new Date().toISOString(), projects, contractors, locations, subProjects, crews, workers, toolboxRecords, workCardEntries, company, logs };
+  return { exportedAt:new Date().toISOString(), projects, contractors, locations, subProjects, crews, workers, toolboxRecords, workCardEntries, heavyEquipment, company, logs };
 }
 
 /* ===================== Drive save (replaces the old DB.set/localStorage saveAll) =====================
@@ -891,6 +894,7 @@ const collectionAccessors = {
   workers: { get:()=>workers, set:v=>{workers=v;} },
   toolboxRecords: { get:()=>toolboxRecords, set:v=>{toolboxRecords=v;} },
   workCardEntries: { get:()=>workCardEntries, set:v=>{workCardEntries=v;} },
+  heavyEquipment: { get:()=>heavyEquipment, set:v=>{heavyEquipment=v;} },
 };
 /* Field-level conflicts on the log currently open in this browser (null when there are none) -
    renderDailyLog reads this to show the resolution panel. Each entry is {field, base, local,
@@ -1781,14 +1785,168 @@ function renderContractors(main){
   if(contractorsView==='contractors'){ contractorsBackBar(main); renderContractorsScreen(main); }
   else if(contractorsView==='crews'){ contractorsBackBar(main); renderCrews(main); }
   else if(contractorsView==='workers'){ contractorsBackBar(main); renderWorkersScreen(main); }
+  else if(contractorsView==='equipment'){ contractorsBackBar(main); renderEquipmentRegistry(main); }
   else renderContractorsMenu(main);
+}
+/* ===================== Heavy mechanical equipment registry (צמ"ה, 22.10.2026) =====================
+   "קבלני משנה" > "ניהול כלי צמ"ה". One record per piece of equipment, owned by a contractor (company):
+   {id, contractorId, type, number, licenseExpiry, model, serial, capacity, inspectionExpiry, inspectionCert,
+    insuranceExpiry, operatorName, operatorLicenseExpiry, note, active}.
+   Required in the form: company (contractor), type, equipment number (unique) and licence expiry - the fields
+   the user specified. The rest are the details a site normally has to keep per piece of equipment (periodic
+   inspection by an authorised inspector for lifting machinery, insurance, operator licence, identification) -
+   optional here, with the same red (expired) / yellow (expires within 7 days) warnings as worker documents.
+   The exact legal requirements per equipment type should be confirmed with the site safety officer. */
+let editingEquipmentId = null, equipmentSearchQuery = '', equipmentContractorFilter = '';
+const EQUIPMENT_DATE_FIELDS = [
+  {key:'licenseExpiry', label:'רישיון כלי'},
+  {key:'inspectionExpiry', label:'בדיקה תקופתית (בודק מוסמך)'},
+  {key:'insuranceExpiry', label:'ביטוח'},
+  {key:'operatorLicenseExpiry', label:'רישיון מפעיל'}
+];
+const LIFTING_TYPE_RE = /מנוף|עגורן|מלגז|הרמה/;   // lifting machinery - normally needs a periodic inspection certificate
+function equipmentDateStatus(dateStr, today){
+  if(!dateStr) return 'none';
+  if(dateStr < today) return 'expired';
+  return dateStr <= addDaysStr(today, EXPIRY_SOON_DAYS) ? 'soon' : 'ok';
+}
+function equipmentIssues(e, today){
+  const out = [];
+  EQUIPMENT_DATE_FIELDS.forEach(f=>{
+    const st = equipmentDateStatus(e[f.key], today);
+    if(st==='expired' || st==='soon') out.push({label:f.label, status:st, date:e[f.key]});
+  });
+  return out;
+}
+function renderEquipmentRegistry(main){
+  const today = todayStr();
+  const editing = editingEquipmentId ? heavyEquipment.find(e=>e.id===editingEquipmentId) : null;
+  const v = k => editing ? esc(editing[k]||'') : '';
+  const card = document.createElement('div');
+  card.className = 'card';
+  const contractorOpts = sortContractorsAlpha(contractors).map(c=>`<option value="${c.id}" ${editing&&editing.contractorId===c.id?'selected':''}>${esc(c.name)}${c.active===false?' (לא פעיל)':''}</option>`).join('');
+  card.innerHTML = `
+    ${buildPrintHeader()}
+    <h2>ניהול כלי צמ"ה ${editing?'<span class="badge gray">עריכת כלי קיים</span>':''}</h2>
+    <div class="no-print">
+      <div class="grid grid-4">
+        <div class="field"><label>שם חברה (קבלן משנה) *</label><select id="eq_contractor" class="searchable"><option value="">בחר חברה...</option>${contractorOpts}</select></div>
+        <div class="field"><label>סוג כלי *</label><input id="eq_type" list="equipmentSuggestions" value="${v('type')}" placeholder="לדוגמה: מנוף"></div>
+        <div class="field"><label>מספר כלי (מס' רישוי) *</label><input id="eq_number" value="${v('number')}"></div>
+        <div class="field"><label>תוקף רישיון כלי *</label><input id="eq_licenseExpiry" type="date" value="${v('licenseExpiry')}"></div>
+      </div>
+      <div class="grid grid-4">
+        <div class="field"><label>יצרן / דגם</label><input id="eq_model" value="${v('model')}"></div>
+        <div class="field"><label>מספר שלדה / סידורי</label><input id="eq_serial" value="${v('serial')}"></div>
+        <div class="field"><label>כושר הרמה / משקל</label><input id="eq_capacity" value="${v('capacity')}" placeholder="לדוגמה: 40 טון"></div>
+        <div class="field"><label>תוקף ביטוח</label><input id="eq_insuranceExpiry" type="date" value="${v('insuranceExpiry')}"></div>
+      </div>
+      <div class="grid grid-4">
+        <div class="field"><label title="בדיקה תקופתית ע&quot;י בודק מוסמך - נדרשת למכונות הרמה (מנוף, עגורן, מלגזה)">תוקף בדיקה תקופתית</label><input id="eq_inspectionExpiry" type="date" value="${v('inspectionExpiry')}"></div>
+        <div class="field"><label>מס' תעודת בדיקה</label><input id="eq_inspectionCert" value="${v('inspectionCert')}"></div>
+        <div class="field"><label>שם מפעיל קבוע</label><input id="eq_operatorName" value="${v('operatorName')}"></div>
+        <div class="field"><label>תוקף רישיון מפעיל</label><input id="eq_operatorLicenseExpiry" type="date" value="${v('operatorLicenseExpiry')}"></div>
+      </div>
+      <div class="field"><label>הערה</label><input id="eq_note" value="${v('note')}"></div>
+      <div class="row-actions">
+        <button class="btn" id="eq_save">${editing?'שמור שינויים':'הוסף כלי'}</button>
+        ${editing?'<button class="btn secondary" id="eq_cancel">בטל עריכה</button>':''}
+      </div>
+      <div class="note" style="margin-top:12px;">שדות עם * חובה. שאר הפרטים (יצרן/דגם, שלדה, כושר הרמה, ביטוח, בדיקה תקופתית של בודק מוסמך, מפעיל) מומלצים לניהול כלים באתר; תוקף שפג מסומן באדום ותוקף שפג בתוך 7 ימים בצהוב. לגבי הדרישות המדויקות לכל סוג כלי יש להיוועץ בממונה הבטיחות באתר.</div>
+    </div>
+    <h3 style="margin-top:18px;">כלים רשומים</h3>
+    <div class="no-print" id="eq_listbar" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
+      <div style="min-width:200px;"><label>חברה</label><select id="eq_filterContractor" class="searchable"><option value="">כל החברות</option>${sortContractorsAlpha(contractors.filter(c=>heavyEquipment.some(e=>e.contractorId===c.id))).map(c=>`<option value="${c.id}" ${equipmentContractorFilter===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <div style="min-width:220px;"><label>חיפוש (סוג / מספר / יצרן)</label><input id="eq_search" value="${esc(equipmentSearchQuery)}"></div>
+      <button class="btn secondary" id="eq_print">🖨️ הדפס רשימה</button>
+    </div>
+    <div id="eq_list"></div>`;
+  main.appendChild(card);
+  if(!document.getElementById('equipmentSuggestions')){
+    const dl = document.createElement('datalist');
+    dl.id = 'equipmentSuggestions';
+    dl.innerHTML = EQUIPMENT_SUGGESTIONS.map(s=>`<option value="${esc(s)}">`).join('');
+    card.appendChild(dl);
+  }
+
+  const listEl = document.getElementById('eq_list');
+  function renderList(){
+    const q = equipmentSearchQuery.trim().toLowerCase();
+    const rows = heavyEquipment.filter(e=>
+      (!equipmentContractorFilter || e.contractorId===equipmentContractorFilter) &&
+      (!q || [e.type,e.number,e.model,e.serial].some(x=>(x||'').toLowerCase().includes(q)))
+    ).sort((a,b)=>{
+      const ca = (contractors.find(c=>c.id===a.contractorId)||{}).name||'', cb = (contractors.find(c=>c.id===b.contractorId)||{}).name||'';
+      return ca.localeCompare(cb,'he') || (a.type||'').localeCompare(b.type||'','he') || (a.number||'').localeCompare(b.number||'','he',{numeric:true});
+    });
+    if(rows.length===0){ listEl.innerHTML = `<div class="empty">${heavyEquipment.length?'אין כלים התואמים לסינון.':'עדיין לא נרשמו כלי צמ"ה.'}</div>`; return; }
+    const expiredCount = rows.filter(e=>e.active!==false && equipmentIssues(e,today).some(i=>i.status==='expired')).length;
+    const dateCell = (e, key)=>{
+      const d = e[key], st = equipmentDateStatus(d, today);
+      if(st==='none'){
+        const missing = key==='inspectionExpiry' && LIFTING_TYPE_RE.test(e.type||'');
+        return missing ? '<span class="badge soon" title="מכונת הרמה - לא הוזן תוקף בדיקה תקופתית">חסר</span>' : '—';
+      }
+      if(st==='expired') return `${esc(fmtDate(d))} <span class="badge expired" title="פג תוקף">פג</span>`;
+      if(st==='soon') return `${esc(fmtDate(d))} <span class="badge soon" title="פג תוקף בתוך ${EXPIRY_SOON_DAYS} ימים">בקרוב</span>`;
+      return esc(fmtDate(d));
+    };
+    listEl.innerHTML = `
+      ${expiredCount?`<div class="tbx-expired-banner no-print">⚠ ${expiredCount} כלים פעילים עם מסמך שפג תוקפו (נכון להיום).</div>`:''}
+      <div style="overflow-x:auto;"><table class="log-table">
+        <thead><tr><th>חברה</th><th>סוג כלי</th><th>מספר</th><th>יצרן / דגם</th><th>רישיון</th><th>בדיקה תקופתית</th><th>ביטוח</th><th>מפעיל</th><th class="no-print"></th></tr></thead>
+        <tbody>${rows.map(e=>{
+          const c = contractors.find(x=>x.id===e.contractorId);
+          return `<tr${e.active===false?' style="opacity:.55;"':''}>
+            <td>${esc(c?c.name:'—')}${e.active===false?' <span class="badge gray">לא פעיל</span>':''}</td>
+            <td>${esc(e.type||'')}</td><td>${esc(e.number||'')}</td>
+            <td>${esc(e.model||'')}${e.capacity?`<div class="hint">${esc(e.capacity)}</div>`:''}${e.serial?`<div class="hint">שלדה: ${esc(e.serial)}</div>`:''}</td>
+            <td>${dateCell(e,'licenseExpiry')}</td>
+            <td>${dateCell(e,'inspectionExpiry')}${e.inspectionCert?`<div class="hint">תעודה ${esc(e.inspectionCert)}</div>`:''}</td>
+            <td>${dateCell(e,'insuranceExpiry')}</td>
+            <td>${esc(e.operatorName||'')}${e.operatorLicenseExpiry?`<div>${dateCell(e,'operatorLicenseExpiry')}</div>`:''}</td>
+            <td class="no-print"><div class="row-actions" style="margin:0;">
+              <button class="btn secondary small eq-edit" data-id="${e.id}">ערוך</button>
+              <button class="btn secondary small eq-active" data-id="${e.id}">${e.active===false?'החזר לפעיל':'סמן כלא פעיל'}</button>
+              <button class="btn danger small eq-del" data-id="${e.id}">מחק</button>
+            </div></td></tr>${e.note?`<tr><td colspan="9" class="hint">הערה: ${esc(e.note)}</td></tr>`:''}`;
+        }).join('')}</tbody></table></div>`;
+    listEl.querySelectorAll('.eq-edit').forEach(b=> b.onclick = ()=>{ editingEquipmentId = b.dataset.id; render(); window.scrollTo(0,0); });
+    listEl.querySelectorAll('.eq-active').forEach(b=> b.onclick = ()=>{ const e = heavyEquipment.find(x=>x.id===b.dataset.id); if(!e) return; e.active = e.active===false; saveAll(); toast(e.active?'הכלי הוחזר לפעיל':'הכלי סומן כלא פעיל'); render(); });
+    listEl.querySelectorAll('.eq-del').forEach(b=> b.onclick = ()=>{ const e = heavyEquipment.find(x=>x.id===b.dataset.id); if(!e) return;
+      if(confirm(`למחוק לחלוטין את הכלי "${e.type||''} ${e.number||''}"?`)){ heavyEquipment = heavyEquipment.filter(x=>x.id!==e.id); if(editingEquipmentId===e.id) editingEquipmentId = null; saveAll(); toast('הכלי נמחק'); render(); } });
+  }
+  renderList();
+
+  document.getElementById('eq_filterContractor').onchange = e=>{ equipmentContractorFilter = e.target.value; renderList(); };
+  document.getElementById('eq_search').oninput = e=>{ equipmentSearchQuery = e.target.value; renderList(); };
+  document.getElementById('eq_print').onclick = ()=> window.print();
+  const cancel = document.getElementById('eq_cancel'); if(cancel) cancel.onclick = ()=>{ editingEquipmentId = null; render(); };
+  document.getElementById('eq_save').onclick = ()=>{
+    const g = id => document.getElementById(id).value.trim();
+    const rec = {
+      contractorId: g('eq_contractor'), type: g('eq_type'), number: g('eq_number'), licenseExpiry: g('eq_licenseExpiry'),
+      model: g('eq_model'), serial: g('eq_serial'), capacity: g('eq_capacity'), inspectionExpiry: g('eq_inspectionExpiry'), inspectionCert: g('eq_inspectionCert'),
+      insuranceExpiry: g('eq_insuranceExpiry'), operatorName: g('eq_operatorName'), operatorLicenseExpiry: g('eq_operatorLicenseExpiry'), note: g('eq_note')
+    };
+    if(!rec.contractorId){ toast('נא לבחור שם חברה'); return; }
+    if(!rec.type){ toast('נא למלא סוג כלי'); return; }
+    if(!rec.number){ toast('נא למלא מספר כלי'); return; }
+    if(!rec.licenseExpiry){ toast('נא למלא תוקף רישיון'); return; }
+    if(heavyEquipment.some(x=>x.id!==editingEquipmentId && (x.number||'').trim().toLowerCase()===rec.number.toLowerCase())){ toast('כלי עם מספר זה כבר רשום'); return; }
+    if(editing){ Object.assign(editing, rec); editingEquipmentId = null; saveAll(); toast('הכלי עודכן'); }
+    else { heavyEquipment.push({id:uid('eq'), active:true, ...rec}); saveAll(); toast('הכלי נוסף'); }
+    render();
+  };
+  initSearchableSelects(main);
 }
 function renderContractorsMenu(main){
   const activeWorkers = workers.filter(w=>w.active!==false).length;
   const tiles = [
     {view:'contractors', icon:'👷', label:'ניהול קבלני משנה', desc:`${contractors.length} קבלנים רשומים`},
     {view:'crews', icon:'👥', label:'ניהול קבוצות עבודה', desc:`${crews.length} קבוצות`},
-    {view:'workers', icon:'🪪', label:'ניהול פועלים בקבוצה', desc:`${workers.length} פועלים (${activeWorkers} פעילים)`}
+    {view:'workers', icon:'🪪', label:'ניהול פועלים בקבוצה', desc:`${workers.length} פועלים (${activeWorkers} פעילים)`},
+    {view:'equipment', icon:'🚜', label:'ניהול כלי צמ"ה', desc:`${heavyEquipment.length} כלים (${heavyEquipment.filter(e=>e.active!==false).length} פעילים)`}
   ];
   const card = document.createElement('div');
   card.className = 'card';
@@ -1816,7 +1974,7 @@ function contractorsBackBar(main){
   bar.innerHTML = `<button class="btn secondary small" id="cv_back">← חזרה לקבלני משנה</button>`;
   main.appendChild(bar);
   document.getElementById('cv_back').onclick = ()=>{
-    editingContractorId = null; editingCrewId = null; editingWorkerId = null;
+    editingContractorId = null; editingCrewId = null; editingWorkerId = null; editingEquipmentId = null;
     contractorSearchQuery = ''; workerSearchQuery = '';
     contractorsView = 'menu'; render();
   };
@@ -1919,11 +2077,13 @@ function renderContractorsScreen(main){
       const contractorCrews = crewsForContractor(c.id);
       const crewIds = new Set(contractorCrews.map(cr=>cr.id));
       const workerCount = workers.filter(w=>crewIds.has(w.crewId)).length;
-      const warnExtra = contractorCrews.length ? `\n(כולל ${contractorCrews.length} קבוצות עבודה ו-${workerCount} פועלים רשומים תחתיו)` : '';
+      const eqCount = heavyEquipment.filter(e=>e.contractorId===c.id).length;
+      const warnExtra = (contractorCrews.length ? `\n(כולל ${contractorCrews.length} קבוצות עבודה ו-${workerCount} פועלים רשומים תחתיו)` : '') + (eqCount ? `\n(וכן ${eqCount} כלי צמ"ה רשומים עליו)` : '');
       if(confirm(`למחוק לחלוטין את הקבלן "${c.name}"?${warnExtra}`)){
         contractors = contractors.filter(x=>x.id!==c.id);
         crews = crews.filter(cr=>!crewIds.has(cr.id));
         workers = workers.filter(w=>!crewIds.has(w.crewId));
+        heavyEquipment = heavyEquipment.filter(e=>e.contractorId!==c.id);
         if(editingContractorId===c.id) editingContractorId = null;
         if(selectedCrewsContractorId===c.id) selectedCrewsContractorId = '';
         saveAll(); toast('הקבלן נמחק'); render();
@@ -5998,7 +6158,7 @@ function renderBackupSection(main){
   main.appendChild(card);
 
   document.getElementById('b_export').onclick = ()=>{
-    const payload = { exportedAt:new Date().toISOString(), projects, contractors, locations, subProjects, crews, workers, toolboxRecords, workCardEntries, company, logs };
+    const payload = { exportedAt:new Date().toISOString(), projects, contractors, locations, subProjects, crews, workers, toolboxRecords, workCardEntries, heavyEquipment, company, logs };
     const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -6058,6 +6218,7 @@ function restoreDataMerge(data){
   const incomingWorkers = Array.isArray(data.workers) ? data.workers : [];
   const incomingToolboxRecords = Array.isArray(data.toolboxRecords) ? data.toolboxRecords : [];
   const incomingWorkCardEntries = Array.isArray(data.workCardEntries) ? data.workCardEntries : [];
+  const incomingHeavyEquipment = Array.isArray(data.heavyEquipment) ? data.heavyEquipment : [];
   const incomingLogs = Array.isArray(data.logs) ? data.logs : [];
 
   let addedProjects = 0, addedContractors = 0, addedLocations = 0, addedSubProjects = 0, addedCrews = 0, addedWorkers = 0, addedToolboxRecords = 0, addedWorkCardEntries = 0, addedLogs = 0;
@@ -6096,6 +6257,7 @@ function restoreDataMerge(data){
   incomingToolboxRecords.forEach(t=>{
     if(!toolboxRecords.some(x=>x.id===t.id)){ toolboxRecords.push(t); addedToolboxRecords++; }
   });
+  incomingHeavyEquipment.forEach(e=>{ if(!heavyEquipment.some(x=>x.id===e.id)) heavyEquipment.push(e); });
   incomingWorkCardEntries.forEach(e=>{
     if(!workCardEntries.some(x=>x.id===e.id)){ workCardEntries.push(e); addedWorkCardEntries++; }
   });
