@@ -1588,12 +1588,18 @@ function renderHome(main){
           <span class="home-tile-desc">${esc(t.desc)}</span>
         </button>
       `).join('')}
+      <button type="button" class="home-tile" id="homeTrackingTile">
+        <span class="home-tile-icon">📐</span>
+        <span class="home-tile-label">מעקב ביצוע</span>
+        <span class="home-tile-desc">אפליקציה נפרדת - נפתחת בלשונית חדשה</span>
+      </button>
     </div>
   `;
   main.appendChild(card);
-  card.querySelectorAll('.home-tile').forEach(btn=>{
+  card.querySelectorAll('.home-tile[data-tab]').forEach(btn=>{
     btn.onclick = ()=> goToTab(btn.dataset.tab);
   });
+  card.querySelector('#homeTrackingTile').onclick = ()=> window.open('tracking/', '_blank');
 }
 
 /* ===================== REQ-001/003: Projects ===================== */

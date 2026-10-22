@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מעקב ביצוע - אתר בנייה</title>
+<style>
+  :root{
+    --navy:#2C5282; --navy-dark:#1A365D; --ink:#B33A3A;
+    --bg:#F5F6F8; --card:#FFFFFF; --text:#1F2937; --muted:#6B7280; --border:#E2E8F0;
+    --ok:#2F855A; --warn:#B7791F; --bad:#C53030;
+    --c0:#EDF2F7; --c1:#E3EEFB; --c2:#C3DAF7; --c3:#8FB8EC; --c5:#68C08F;
+    --topbar-h:0px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:Arial,"Segoe UI",Tahoma,sans-serif; background:var(--bg); color:var(--text); direction:rtl; min-height:100vh; font-size:14px;}
+  #topbar{position:sticky; top:0; z-index:40;}
+  header{background:linear-gradient(135deg,var(--navy-dark),var(--navy)); color:#fff; padding:10px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  header h1{margin:0; font-size:19px; letter-spacing:.3px;}
+  header .sub{font-size:12px; color:#CBD8EA; margin-top:2px;}
+  header .hbtns{display:flex; gap:8px; align-items:center;}
+  nav{display:flex; gap:4px; background:var(--navy-dark); padding:0 16px; overflow-x:auto;}
+  nav button{background:transparent; border:none; color:#CBD8EA; padding:12px 16px; font-size:13.5px; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; font-family:inherit;}
+  nav button.active{color:#fff; border-bottom:3px solid var(--ink); font-weight:bold;}
+  .badge{display:inline-block; min-width:18px; padding:1px 6px; border-radius:9px; background:var(--ink); color:#fff; font-size:11px; margin-inline-start:4px;}
+  main{max-width:1320px; margin:20px auto; padding:0 16px 60px;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .card h2{margin-top:0; font-size:16px; color:var(--navy-dark); border-bottom:1px solid var(--border); padding-bottom:10px;}
+  h3{font-size:14px; color:var(--navy); margin:14px 0 8px;}
+  label{display:block; font-size:12.5px; color:var(--muted); margin-bottom:4px; font-weight:bold;}
+  input,select,textarea{padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13.5px; background:#fff; color:var(--text); max-width:100%;}
+  textarea{width:100%; min-height:110px;}
+  button.btn{background:var(--navy); color:#fff; border:none; padding:9px 16px; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;}
+  button.btn:hover{background:var(--navy-dark);}
+  button.btn:disabled{opacity:.45; cursor:not-allowed;}
+  button.btn.secondary{background:#fff; color:var(--navy); border:1px solid var(--navy);}
+  button.btn.secondary.on{background:var(--navy); color:#fff;}
+  button.btn.danger{background:#fff; color:var(--bad); border:1px solid var(--bad);}
+  button.btn.small{padding:5px 10px; font-size:12px;}
+  header button.btn.secondary{background:transparent; color:#fff; border-color:#CBD8EA;}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; align-items:center;}
+  .chips .lbl{font-size:12.5px; color:var(--muted); font-weight:bold; margin-inline-end:4px;}
+  .chip{border:1px solid var(--border); background:#fff; color:var(--navy-dark); border-radius:16px; padding:6px 16px; cursor:pointer; font-size:13px; font-family:inherit;}
+  .chip.on{background:var(--navy); border-color:var(--navy); color:#fff;}
+  .chip small{opacity:.75; margin-inline-start:4px;}
+  .bar{display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; font-size:13px;}
+  .bar label.inl{display:flex; gap:6px; align-items:center; margin:0; font-weight:normal; color:var(--text);}
+  .note{background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:10px 14px; border-radius:8px; font-size:12.5px; margin:12px 0 0;}
+  .warnbox{background:#FFFBEB; border:1px solid #F5D98B; color:#7A5A0A; padding:12px 16px; border-radius:8px; margin-bottom:14px;}
+  .empty{color:var(--muted); font-size:13px; padding:14px; text-align:center;}
+  table{width:100%; border-collapse:collapse; font-size:13px; border:1px solid var(--border);}
+  th,td{padding:6px 7px; border:1px solid var(--border); text-align:center;}
+  th{background:#F0F4F8; color:var(--navy-dark); font-size:12px;}
+  td.l{text-align:right;}
+  td.lvl{font-weight:bold; text-align:right; white-space:nowrap; background:#fff;}
+  td.lvlpct{font-weight:bold; background:#F0F4F8; color:var(--navy-dark); white-space:nowrap;}
+  td.na{color:#A0AEC0; background:var(--c0); opacity:.7;}
+  tfoot td{font-weight:bold; background:#F0F4F8; color:var(--navy-dark);}
+  .scroll{overflow-x:auto;}
+  .board-head{display:flex; justify-content:space-between; align-items:flex-end; gap:8px; margin-bottom:8px; flex-wrap:wrap;}
+  .board-head .name{font-size:15px; font-weight:bold; background:var(--navy); color:#fff; padding:3px 16px; border-radius:6px;}
+  .board-head .total{font-size:24px; font-weight:bold; color:var(--navy-dark);}
+  .cell{display:block; width:100%; border:none; cursor:pointer; padding:6px 2px; border-radius:4px; font-size:13px; font-family:inherit; color:var(--navy-dark); position:relative; min-width:46px;}
+  .cell:hover{outline:2px solid var(--navy);}
+  .cell .bell{position:absolute; top:-3px; inset-inline-start:-1px; font-size:10px;}
+  .p0{background:var(--c0); color:var(--muted);} .p1{background:var(--c1);} .p2{background:var(--c2);} .p3{background:var(--c3);} .p5{background:var(--c5); color:#14432A; font-weight:bold;}
+  .legend{display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--muted); margin-top:6px;}
+  .legend i{display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:middle; margin-inline-end:4px; border:1px solid var(--border);}
+  .sum{font-size:12px; color:var(--muted);}
+  .curcon{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#F0F4F8; border:1px solid var(--border); border-radius:8px; padding:9px 14px; margin-bottom:12px;}
+  .curcon b{color:var(--navy-dark);}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  @media (max-width:860px){ .grid2{grid-template-columns:1fr;} header{padding:10px 14px;} }
+  .wrow{display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px dashed var(--border);}
+  .wrow .nm{flex:1;}
+  .wrow input[type=number]{width:70px; text-align:center;}
+  .wrow input[type=text]{flex:1;}
+  .facade{display:flex; flex-direction:column; gap:8px;}
+  .frow{display:flex; gap:10px; align-items:stretch; border:1px solid var(--border); border-radius:8px; padding:8px; background:#fff;}
+  .frow .fl{flex:0 0 96px; display:flex; flex-direction:column; justify-content:center; gap:2px; font-weight:bold; color:var(--navy-dark);}
+  .frow .fl .pc{font-size:12px; color:var(--muted); font-weight:normal;}
+  .frow.selectable .fl{cursor:pointer; text-decoration:underline dotted;}
+  .tiles{display:flex; gap:8px; flex-wrap:wrap; flex:1;}
+  .tile{border:2px solid transparent; border-radius:8px; padding:7px 10px; min-width:92px; cursor:pointer; font-family:inherit; text-align:center; font-size:13px; color:var(--navy-dark);}
+  .tile .tn{font-weight:bold; font-size:12.5px;}
+  .tile .tp{font-size:17px; font-weight:bold;}
+  .tile .tt{font-size:10.5px; opacity:.8;}
+  .tile.lobby{min-width:120px; border-style:dashed; border-color:var(--navy);}
+  .tile.picked{outline:3px solid var(--ink); outline-offset:1px;}
+  .tile:hover{filter:brightness(.96);}
+  .tile.na{background:var(--c0); color:var(--muted); cursor:default;}
+  .typebadge{display:inline-block; font-size:10px; padding:0 6px; border-radius:8px; background:var(--navy); color:#fff; margin-top:2px;}
+  .typebadge.t2{background:var(--warn);} .typebadge.t3{background:var(--ink);}
+  .ov{position:fixed; inset:0; background:rgba(26,54,93,.55); z-index:60; display:none; align-items:center; justify-content:center; padding:12px;}
+  .ov.on{display:flex;}
+  .modal{background:#fff; border-radius:12px; width:100%; max-width:560px; max-height:92vh; overflow:auto; padding:18px 20px; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  .modal h2{margin:0 0 2px; font-size:17px; color:var(--navy-dark); border:none; padding:0;}
+  .modal .sub{color:var(--muted); font-size:13px; margin-bottom:12px;}
+  .f{margin-bottom:10px;} .f input[type=text],.f select,.f input[type=date],.f input[type=number]{width:100%;}
+  .row2{display:flex; gap:10px;} .row2 > div{flex:1;}
+  .itemrow{display:grid; grid-template-columns:1fr 110px 60px; gap:8px; align-items:center; padding:5px 0; border-bottom:1px dashed var(--border);}
+  .itemrow .nm small{display:block; color:var(--warn); font-size:11px;}
+  .itemrow input[type=number]{width:60px; text-align:center;}
+  .hist{font-size:12.5px; border:1px solid var(--border); border-radius:8px; max-height:130px; overflow:auto;}
+  .hist div{padding:5px 9px; border-bottom:1px solid var(--border);} .hist div:last-child{border:none;}
+  .rem-box{border:1px solid #BFDBFE; border-radius:8px; padding:9px 12px; background:#EFF6FF;}
+  .rem-box label.inl{display:flex; gap:6px; align-items:center; margin:0; color:#1E40AF;}
+  .pill{display:inline-block; padding:1px 9px; border-radius:10px; font-size:12px; color:#fff;}
+  .pill.today{background:var(--warn);} .pill.over{background:var(--bad);} .pill.soon{background:var(--muted);} .pill.done{background:var(--ok);}
+  #popup .modal{border-top:6px solid var(--warn);}
+  .remitem{border:1px solid var(--border); border-radius:8px; padding:9px 12px; margin-bottom:8px; background:#fff;}
+  .remitem .t{font-weight:bold; color:var(--navy-dark);} .remitem .d{font-size:12.5px; color:var(--muted); margin:3px 0 7px;}
+  .right{display:flex; gap:8px; flex-wrap:wrap;}
+  .varbox{border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-top:8px; background:#FAFBFC;}
+  /* sign-in gate */
+  #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
+  #signInGate .card{max-width:420px; width:90%;}
+  #signInGate .hint{margin-top:10px; min-height:16px; font-size:12px; color:var(--muted);}
+  /* drive problem dialog */
+  #driveProblemBar{display:none; position:fixed; inset:0; z-index:3000; background:rgba(15,23,42,.72); align-items:center; justify-content:center; padding:16px;}
+  #driveProblemBar .dp-box{background:#fff; border-top:6px solid #B91C1C; border-radius:12px; max-width:480px; width:100%; padding:22px 24px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  #driveProblemBar .dp-icon{font-size:42px; line-height:1; color:#B91C1C;}
+  #driveProblemBar h2{margin:6px 0 8px; font-size:20px; color:#991B1B; border:none; padding:0;}
+  #driveProblemBar p{margin:6px 0; font-size:14.5px;}
+  #driveProblemBar .dp-warn{background:#FEF2F2; border:1px solid #FCA5A5; border-radius:8px; padding:8px 10px; color:#991B1B;}
+  #driveProblemBar .dp-actions{display:flex; flex-direction:column; gap:8px; margin-top:14px;}
+  #driveProblemBar .dp-actions .btn{width:100%; font-size:15px;}
+  #driveProblemBar #dpFix{background:#B91C1C;}
+  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:#1F2937; color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:2500; display:none; max-width:90%;}
+  @media print{ #topbar,.bar,.no-print,.chips,button,.toast{display:none !important;} body{background:#fff;} main{margin:0;} .card{box-shadow:none;} }
+</style>
+</head>
+<body>
+
+<div id="signInGate">
+  <div class="card">
+    <h2>מעקב ביצוע — אתר בנייה</h2>
+    <div class="note">האפליקציה שומרת את כל הנתונים בקובץ אחד ב-Google Drive, כדי שכמה אנשים יוכלו לראות ולעדכן את אותם נתונים. יש להתחבר עם חשבון Google שהוגדר כמשתמש מורשה ולאשר גישה ל-Drive.</div>
+    <div style="margin-top:12px;"><button id="gateSignInBtn" class="btn">התחבר עם Google</button></div>
+    <div class="hint" id="gateStatus"></div>
+  </div>
+</div>
+
+<div id="topbar" style="visibility:hidden;">
+  <header>
+    <div>
+      <h1>מעקב ביצוע — אתר בנייה</h1>
+      <div class="sub">תחום · שלב · מפלס · דירות ולובי <span id="driveSaveStatus"></span></div>
+    </div>
+    <div class="hbtns no-print"><button class="btn secondary small" id="saveBtn" title="שומר מיד ומאשר שהכול הגיע ל-Drive">💾 שמור</button></div>
+  </header>
+  <nav id="tabs"></nav>
+</div>
+<main><div id="view"></div></main>
+
+<div class="ov" id="editor"><div class="modal" id="editorBox"></div></div>
+<div class="ov" id="popup"><div class="modal" id="popupBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+/* ============================================================== helpers */
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const pad = n => String(n).padStart(2,'0');
+const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = () => isoOf(new Date());
+const addDays = (iso, n) => { const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return isoOf(d); };
+const fmt = iso => { if(!iso || iso<'0001-02-01') return ''; const [y,m,d] = iso.split('-'); return `${+d}/${+m}/${y.slice(2)}`; };
+const round1 = n => Math.round(n*10)/10;
+const uid = p => (p||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const cleanName = s => String(s||'').replace(/\|/g,'/').trim();
+const bandOf = p => p==null ? 'p0' : p<=0 ? 'p0' : p<25 ? 'p1' : p<50 ? 'p2' : p<100 ? 'p3' : 'p5';
+const pctTxt = p => p==null ? '—' : (p>0 ? Math.round(p)+'%' : '·');
+const fp = p => p==null ? '—' : Math.round(p)+'%';
+let toastTimer = null;
+function toast(msg){ const el = document.getElementById('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(()=>{ el.style.display='none'; }, 4200); }
+
+/* ============================================================== data model */
+/* Everything lives in ONE JSON file on Google Drive ("מעקב-ביצוע-נתונים.json"), shared by all users:
+   contractors[]    {id, name, active}
+   assignments[]    {id, siteId, tradeId, contractorId, from, to, reason, note} - the performing contractor per trade+site
+   sites[]          buildings and basement parts: {id, kind:'building'|'basement', name, under, levels:[{id, name, comps:[{id, kind:'apartment'|'lobby', name, type, lay, rooms, area}]}]}
+   trades[]         templates: {id, name, phases:[{id, name, weight, mode:'level'|'component', levelItems | compItems + variants + lobbyWeight}]}
+   entries[]        append-only progress log {id, key, date, pct, note, contractorId, by, at}  (key = site|trade.phase|unit|item)
+   reminders[]      {id, key, title, baseDate, due, status:'open'|'done', snoozedTo, doneBy, doneOn}
+   settings         {aptTypes:[...]}
+   Progress is never overwritten: every update is a new entry; the cell shows the latest one. */
+let contractors = [], assignments = [], sites = [], trades = [], entries = [], reminders = [], settings = {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
+const it = (n,w)=>({n, w: w||1});
+/* Starter templates (examples - edit them in the "תבניות" tab) */
+function defaultTrades(){
+  const mk = (id,name,phases)=>({id,name,phases});
+  return [
+    mk('concrete','בטון ובלוקים',[{id:'frame', name:'שלד', weight:100, mode:'level', levelItems:[{...it('רצפה',20), scope:'ground'},it('קירות',25),it('תקרה',50),it('בלוקים',5)]}]),
+    mk('plumb','אינסטלציה',[
+      {id:'black', name:'שלב שחור', weight:60, mode:'level', levelItems:[it('צנרת ורטיקלית - קירות'),it('צנרת ורטיקלית - תקרה'),it('צנרת הוריזונטלית - קירות'),it('צנרת הוריזונטלית - תקרה')]},
+      {id:'white', name:'שלב לבן (אביזרים)', weight:40, mode:'component', lobbyWeight:0.5, compItems:{apartment:[it('אסלה'),it('כיור'),it('ארון אמבט'),it('ברזים')], lobby:[it('ברז שירות'),it('נקודת ניקוז')]}, variants:{}}]),
+    mk('elec','חשמל',[
+      {id:'black', name:'שלב שחור (שרוולים)', weight:40, mode:'level', levelItems:[it('שרוולים - קירות'),it('שרוולים - תקרה'),it('קופסאות')]},
+      {id:'wires', name:'משיכת חוטים', weight:25, mode:'level', levelItems:[it('חוטים - קירות'),it('חוטים - תקרה')]},
+      {id:'white', name:'שלב לבן (אביזרים)', weight:35, mode:'component', lobbyWeight:0.6, compItems:{apartment:[it('שקעים ומפסקים'),it('גופי תאורה'),it('לוח דירתי')], lobby:[it('גופי תאורה'),it('לוח קומתי')]}, variants:{}}]),
+    mk('steel','מסגרות',[{id:'all', name:'התקנה', weight:100, mode:'component', lobbyWeight:1, compItems:{apartment:[it('דלת כניסה'),it('מעקה מרפסת')], lobby:[it('דלת לובי'),it('מעקה מדרגות')]}, variants:{}}]),
+    mk('kitchen','מטבחים',[{id:'all', name:'התקנה', weight:100, mode:'component', lobbyWeight:0, compItems:{apartment:[it('ארונות'),it('שיש'),it('חיבורים')], lobby:[]}, variants:{}}]),
+    mk('alum','אלומיניום',[
+      {id:'frames', name:'משקופים', weight:30, mode:'level', levelItems:[it('משקופי חלונות'),it('משקופי דלתות')]},
+      {id:'install', name:'התקנת חלונות', weight:70, mode:'component', lobbyWeight:0.5, compItems:{apartment:[it('חלונות'),it('תריסים')], lobby:[it('חלון לובי')]}, variants:{}}]),
+    mk('doors','דלתות פנים',[{id:'all', name:'התקנה', weight:100, mode:'component', lobbyWeight:0, compItems:{apartment:[it('משקופים'),it('כנפי דלתות'),it('פרזול')], lobby:[]}, variants:{}}])
+  ];
+}
+const SWAP_REASONS = ['לא עמד בהתחייבות','סיים את ההתקשרות','סולק מהאתר','אחר'];
+const BEGIN = '0001-01-01';
+
+function buildPayload(){ return {version:1, exportedAt:new Date().toISOString(), contractors, assignments, sites, trades, entries, reminders, settings}; }
+function applyData(d){
+  d = d || {};
+  contractors = Array.isArray(d.contractors) ? d.contractors : [];
+  assignments = Array.isArray(d.assignments) ? d.assignments : [];
+  sites = Array.isArray(d.sites) ? d.sites : [];
+  trades = Array.isArray(d.trades) ? d.trades : (d.trades===undefined ? defaultTrades() : []);
+  entries = Array.isArray(d.entries) ? d.entries : [];
+  reminders = Array.isArray(d.reminders) ? d.reminders : [];
+  settings = (d.settings && typeof d.settings==='object') ? d.settings : {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
+  if(!Array.isArray(settings.aptTypes) || !settings.aptTypes.length) settings.aptTypes = ['שוק חופשי','מחיר למשתכן','פנטהאוז'];
+  invalidateIndex();
+}
+
+/* ---- progress index (key -> entries sorted by date) */
+let entryIndex = null;
+function invalidateIndex(){ entryIndex = null; }
+function index(){
+  if(entryIndex) return entryIndex;
+  const m = new Map();
+  entries.forEach(e=>{ let a = m.get(e.key); if(!a){ a = []; m.set(e.key,a); } a.push(e); });
+  m.forEach(a=> a.sort((x,y)=> x.date.localeCompare(y.date) || (x.at||'').localeCompare(y.at||'')));
+  return entryIndex = m;
+}
+const curGet = k => { const a = index().get(k); return a ? a[a.length-1].pct : 0; };
+const getAt = d => k => { const a = index().get(k); let p = 0; if(a) for(const e of a){ if(e.date<=d) p = e.pct; else break; } return p; };
+const entriesOf = k => index().get(k) || [];
+
+/* ---- structure helpers */
+const siteById = id => sites.find(s=>s.id===id);
+const tradeById = id => trades.find(t=>t.id===id);
+const phaseOf = (t,pid) => t.phases.find(p=>p.id===pid) || t.phases[0];
+const contractorName = id => { const c = contractors.find(x=>x.id===id); return c ? c.name : (id ? '(קבלן נמחק)' : 'לא הוקצה קבלן'); };
+const phaseKey = (t,ph) => t.id+'.'+ph.id;
+const keyOf = (sid,pk,unit,item) => [sid,pk,unit,item].join('|');
+const levelsTopDown = s => [...s.levels].reverse();
+const typeCls = ty => ['','t2','t3'][settings.aptTypes.indexOf(ty)] || '';
+function unitItems(phase, comp){
+  const core = (phase.compItems && phase.compItems[comp.kind]) || [];
+  if(comp.kind!=='apartment') return core;
+  const v = phase.variants && phase.variants[comp.type];
+  return v ? core.filter(i=>!(v.remove||[]).includes(i.n)).concat(v.add||[]) : core;
+}
+/* ---- performing contractor per trade + site */
+function assignRows(sid,tid){ return assignments.filter(a=>a.siteId===sid && a.tradeId===tid).sort((a,b)=>a.from.localeCompare(b.from)); }
+function contractorAt(sid,tid,date){ let c = ''; assignRows(sid,tid).forEach(a=>{ if(date>=a.from) c = a.contractorId; }); return c; }
+function currentAssign(sid,tid){ const r = assignRows(sid,tid); return r.length ? r[r.length-1] : null; }
+
+/* Level-mode items can be limited to some levels: scope '' = every level, 'ground' = only the ground floor (קרקע),
+   'upper' = every level except the ground floor (e.g. a floor slab "רצפה" only exists on the ground floor). */
+function levelItemsFor(ph, lv){ return (ph.levelItems||[]).filter(i=> !i.scope || (i.scope==='ground' ? lv.id==='קרקע' : lv.id!=='קרקע')); }
+/* ============================================================== roll-ups (getter = current or "as of date") */
+function unitPct(sid,pk,unit,items,get){ let s = 0, w = 0; items.forEach(i=>{ s += i.w*get(keyOf(sid,pk,unit,i.n)); w += i.w; }); return w ? s/w : null; }
+function levelPct(s,t,ph,lv,get){
+  const pk = phaseKey(t,ph);
+  if(ph.mode==='level') return unitPct(s.id,pk,'L:'+lv.id,levelItemsFor(ph,lv),get);
+  let sum = 0, w = 0;
+  lv.comps.forEach(c=>{ const items = unitItems(ph,c); if(!items.length) return; const cw = c.kind==='lobby' ? (ph.lobbyWeight==null?1:ph.lobbyWeight) : 1; if(cw<=0) return; sum += cw*unitPct(s.id,pk,c.id,items,get); w += cw; });
+  return w ? sum/w : null;
+}
+function phasePct(s,t,ph,get){ let sum = 0, n = 0; s.levels.forEach(l=>{ const p = levelPct(s,t,ph,l,get); if(p!=null){ sum += p; n++; } }); return n ? sum/n : null; }
+function tradePct(s,t,get){ let sum = 0, w = 0; t.phases.forEach(ph=>{ const p = phasePct(s,t,ph,get); if(p==null) return; sum += ph.weight*p; w += ph.weight; }); return w ? sum/w : null; }
+function addEntry(sid,tid,pk,unit,item,pct,date,note){
+  entries.push({id:uid('en'), key:keyOf(sid,pk,unit,item), date, pct, note:note||'', contractorId:contractorAt(sid,tid,date), by:(me&&me.name)||'', at:new Date().toISOString()});
+  invalidateIndex();
+}
+
+/* ============================================================== UI state */
+let tab = 'overview', me = null;
+let curS = '', curT = '', curP = '', ovS = '';
+let selectMode = false; const picked = new Set();
+let setupT = '', rMonth = todayStr().slice(0,7), rTrade = 'all', rS = 'all', rCon = 'all';
+function ensureSelection(){
+  if(!siteById(curS)) curS = (sites[0]||{}).id || '';
+  if(!siteById(ovS)) ovS = (sites[0]||{}).id || '';
+  if(!tradeById(curT)) curT = (trades[0]||{}).id || '';
+  const t = tradeById(curT); if(t && !t.phases.some(p=>p.id===curP)) curP = t.phases[0] ? t.phases[0].id : '';
+  if(!tradeById(setupT)) setupT = (trades[0]||{}).id || '';
+}
+const siteOptions = (sel, allLabel)=> `${allLabel?`<option value="all">${allLabel}</option>`:''}<optgroup label="בניינים">${sites.filter(s=>s.kind==='building').map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup><optgroup label="מרתף (נפרד מהבניינים)">${sites.filter(s=>s.kind==='basement').map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${esc(x.name)}</option>`).join('')}</optgroup>`;
+const contractorOptions = (sel, ph)=> `<option value="">${ph||'בחר קבלן...'}</option>` + [...contractors].filter(c=>c.active!==false||c.id===sel).sort((a,b)=>a.name.localeCompare(b.name,'he')).map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.name)}</option>`).join('');
+
+/* ---- reminders */
+const remVis = r => r.snoozedTo || r.due;
+const dueOpen = ()=> reminders.filter(r=>r.status==='open' && remVis(r)<=todayStr()).sort((a,b)=>remVis(a).localeCompare(remVis(b)));
+function describeKey(k){
+  const [sid,pk,unit,item] = k.split('|'), [tid,pid] = pk.split('.'), s = siteById(sid), t = tradeById(tid);
+  if(!s || !t) return k;
+  const ph = phaseOf(t,pid);
+  let where = unit.startsWith('L:') ? unit.slice(2) : (()=>{ for(const l of s.levels){ const c = l.comps.find(x=>x.id===unit); if(c) return l.name+' · '+c.name; } return unit; })();
+  return `${s.name} · ${t.name} (${ph.name}) · ${where} · ${item}`;
+}
+
+/* ============================================================== rendering */
+function renderTabs(){
+  const n = dueOpen().length;
+  const items = [['overview','סקירה'],['track','מעקב מפורט'],['templates','תבניות'],['settings','הגדרות'],['report','דוח חודשי'],['rem','תזכורות']];
+  document.getElementById('tabs').innerHTML = items.map(([id,l])=>`<button class="${tab===id?'active':''}" data-tab="${id}">${l}${id==='rem'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('');
+  document.querySelectorAll('#tabs button').forEach(b=> b.onclick = ()=>{ tab = b.dataset.tab; render(); });
+}
+function render(){
+  ensureSelection(); renderTabs();
+  const v = document.getElementById('view');
+  v.innerHTML = tab==='overview' ? overviewView() : tab==='track' ? trackView() : tab==='templates' ? templatesView() : tab==='settings' ? settingsView() : tab==='report' ? reportView() : remView();
+  wire();
+  const tb = document.getElementById('topbar'); if(tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight+'px');
+}
+function onboardingCard(){
+  return `<div class="warnbox"><b>להתחלה:</b> עדיין לא הוגדר מבנה. עבור ל<a href="#" data-gosettings="1">הגדרות</a>, הדבק את רשימת הדירות מ-Excel (בניין, קומה, מספר דירה, טיפוס, חדרים, שטח, מחיר מטרה), הוסף את חלקי המרתף והקבלנים, ואז הקצה קבלן לכל תחום.</div>`;
+}
+
+/* ---------- overview */
+function overviewView(){
+  if(!sites.length) return onboardingCard();
+  if(!trades.length) return '<div class="warnbox">לא הוגדרו תחומים. עבור ללשונית "תבניות".</div>';
+  const head1 = trades.map(t=>`<th colspan="${t.phases.length||1}">${esc(t.name)}</th>`).join('');
+  const head2 = trades.map(t=>t.phases.map(ph=>`<th><small>${esc(ph.name)}</small></th>`).join('') || '<th></th>').join('');
+  const row = s=> trades.map(t=>t.phases.map(ph=>{ const p = phasePct(s,t,ph,curGet); return `<td><button class="cell ${bandOf(p)}" data-go="${s.id}|${t.id}|${ph.id}">${pctTxt(p)}</button></td>`; }).join('')).join('');
+  const blds = sites.filter(s=>s.kind==='building'), zones = sites.filter(s=>s.kind==='basement');
+  const aptCount = s => s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0);
+  const bTable = blds.length ? `<div class="card"><h2>בניינים - התקדמות לפי תחום ושלב</h2><div class="scroll"><table><thead><tr><th rowspan="2">בניין</th><th rowspan="2">מפלסים</th><th rowspan="2">דירות</th>${head1}</tr><tr>${head2}</tr></thead>
+    <tbody>${blds.map(s=>`<tr><td class="lvl"><a href="#" data-ovsel="${s.id}" style="color:inherit;">${esc(s.name)}</a></td><td>${s.levels.length}</td><td>${aptCount(s)}</td>${row(s)}</tr>`).join('')}</tbody></table></div></div>` : '';
+  const zTable = zones.length ? `<div class="card"><h2>מרתף - מרחב נפרד מהבניינים</h2><div class="scroll"><table><thead><tr><th rowspan="2">חלק</th><th rowspan="2">מפלסים</th>${head1}</tr><tr>${head2}</tr></thead>
+    <tbody>${zones.map(s=>`<tr><td class="lvl"><a href="#" data-ovsel="${s.id}" style="color:inherit;">${esc(s.name)}</a>${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.levels.length}</td>${row(s)}</tr>`).join('')}</tbody></table></div>
+    <div class="sum" style="margin-top:6px;">המרתף אינו חלק מאף בניין: ההתקדמות בו לא נכנסת לאחוזי הבניינים, ולהפך. שלב שמתנהל לפי דירות ולובי אינו חל על מרתף ומסומן "—".</div></div>` : '';
+  const s = siteById(ovS);
+  const lvRows = levelsTopDown(s).map(lv=>`<tr><td class="lvl">${esc(lv.name)}</td>${trades.map(t=>t.phases.map(ph=>{ const p = levelPct(s,t,ph,lv,curGet); return `<td><button class="cell ${bandOf(p)}" data-go="${s.id}|${t.id}|${ph.id}">${pctTxt(p)}</button></td>`; }).join('')).join('')}</tr>`).join('');
+  const foot = trades.map(t=>t.phases.map(ph=>`<td>${fp(phasePct(s,t,ph,curGet))}</td>`).join('')).join('');
+  const tfoot = trades.map(t=>`<td colspan="${t.phases.length||1}">${fp(tradePct(s,t,curGet))}</td>`).join('');
+  const detail = `<div class="bar"><div><label>פירוט מפלסים</label><select id="ovS">${siteOptions(ovS)}</select></div><span class="sum">לחיצה על תא פותחת את התחום והשלב במעקב המפורט</span></div>
+    <div class="card"><div class="board-head"><span class="name">${esc(s.name)}</span><span class="sum">${s.kind==='basement'?'מרחב נפרד מהבניינים'+(s.under?' · מתחת ל'+esc(s.under)+' (מידע בלבד)':''):`${s.levels.length} מפלסים · ${aptCount(s)} דירות`}</span></div>
+      <div class="scroll"><table><thead><tr><th rowspan="2">מפלס</th>${head1}</tr><tr>${head2}</tr></thead><tbody>${lvRows}</tbody>
+      <tfoot><tr><td class="l">סה"כ שלב</td>${foot}</tr><tr><td class="l">סה"כ תחום (משוקלל)</td>${tfoot}</tr></tfoot></table></div></div>`;
+  return bTable + zTable + detail + `<div class="legend"><span><i style="background:var(--c0)"></i>לא התחיל / לא רלוונטי</span><span><i style="background:var(--c1)"></i>עד 25%</span><span><i style="background:var(--c2)"></i>25-50%</span><span><i style="background:var(--c3)"></i>50-99%</span><span><i style="background:var(--c5)"></i>הושלם</span></div>
+    <div class="note">האחוז במפלס הוא שקלול של פריטי השלב (שלב לפי מפלס) או של הדירות והלובי (שלב לפי מרכיב; משקל הלובי נקבע בנפרד). סה"כ שלב = ממוצע המפלסים. סה"כ תחום = שקלול השלבים לפי המשקלים שהוגדרו ב"תבניות".</div>`;
+}
+
+/* ---------- detailed tracking */
+function trackView(){
+  if(!sites.length) return onboardingCard();
+  const s = siteById(curS), t = tradeById(curT);
+  if(!t) return '<div class="warnbox">לא הוגדרו תחומים. עבור ללשונית "תבניות".</div>';
+  const ph = phaseOf(t,curP), pk = phaseKey(t,ph), as = currentAssign(s.id,t.id);
+  const phaseChips = t.phases.map(p=>`<button class="chip ${p.id===ph.id?'on':''}" data-phase="${p.id}">${esc(p.name)}<small>${fp(phasePct(s,t,p,curGet))}</small></button>`).join('');
+  const conLine = as
+    ? `<span>קבלן מבצע - ${esc(t.name)} · ${esc(s.name)}: <b>${esc(contractorName(as.contractorId))}</b>${as.from>BEGIN?` (מתאריך ${fmt(as.from)})`:''}</span><button class="btn secondary small" id="swapBtn">החלף קבלן מבצע</button>`
+    : `<span>לא הוקצה קבלן מבצע ל${esc(t.name)} ב${esc(s.name)}</span><span class="right"><select id="firstCon">${contractorOptions('', 'בחר קבלן...')}</select><button class="btn small" id="firstConBtn">הקצה</button></span>`;
+  const head = `
+    <div class="chips"><span class="lbl">תחום:</span>${trades.map(x=>`<button class="chip ${x.id===t.id?'on':''}" data-trade="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+    <div class="chips"><span class="lbl">שלב:</span>${phaseChips}</div>
+    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
+    <div class="curcon">${conLine}</div>`;
+  let body;
+  if(ph.mode==='level'){
+    const cols = ph.levelItems||[];
+    const rows = levelsTopDown(s).map(lv=>{
+      const unit = 'L:'+lv.id, lp = levelPct(s,t,ph,lv,curGet);
+      const here = levelItemsFor(ph,lv);
+      const cells = cols.map(i=>{ if(!here.includes(i)) return '<td class="na">—</td>'; const k = keyOf(s.id,pk,unit,i.n), p = curGet(k), r = reminders.find(x=>x.key===k && x.status==='open'); const bell = r ? '<span class="bell">🔔</span>' : '';
+        return `<td><button class="cell ${bandOf(p)}" data-cell="${esc(k)}">${bell}${pctTxt(p)}</button></td>`; }).join('');
+      return `<tr><td class="lvl">${esc(lv.name)}</td>${cells}<td class="lvlpct">${fp(lp)}</td></tr>`;
+    }).join('');
+    body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">${fp(phasePct(s,t,ph,curGet))}</span></div>
+      <div class="scroll"><table><thead><tr><th>מפלס</th>${cols.map(i=>`<th>${esc(i.n)}</th>`).join('')}<th>% מפלס</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="sum" style="margin-top:6px;">שלב לפי מפלס - לחיצה על תא פותחת עדכון (אחוז, תאריך, הערה ותזכורת).</div></div>`;
+  } else if(!s.levels.some(l=>l.comps.length)){
+    body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">—</span></div>
+      <div class="empty">השלב "${esc(ph.name)}" מתנהל לפי דירות ולובי, ולכן אינו חל על ${esc(s.name)} (מרחב ללא דירות). בחר שלב אחר של התחום.</div></div>`;
+  } else {
+    const rows = levelsTopDown(s).map(lv=>{
+      const lp = levelPct(s,t,ph,lv,curGet);
+      const tiles = lv.comps.map(c=>{
+        const items = unitItems(ph,c);
+        const lw = ph.lobbyWeight==null?1:ph.lobbyWeight;
+        if(!items.length || (c.kind==='lobby' && lw<=0)) return `<div class="tile na ${c.kind==='lobby'?'lobby':''}"><div class="tn">${esc(c.name)}</div><div class="tt">אין פריטים</div></div>`;
+        const p = unitPct(s.id,pk,c.id,items,curGet);
+        return `<button class="tile ${bandOf(p)} ${c.kind==='lobby'?'lobby':''} ${picked.has(c.id)?'picked':''}" data-comp="${esc(c.id)}"><div class="tn">${esc(c.name)}</div><div class="tp">${pctTxt(p)}</div>${c.kind==='apartment'?`<div class="tt">${esc(c.rooms||'')}${c.rooms?" חד' · ":''}${c.lay?'טיפוס '+esc(c.lay):''}</div><span class="typebadge ${typeCls(c.type)}">${esc(c.type)}</span>`:'<div class="tt">שטח משותף</div>'}</button>`;
+      }).join('');
+      return `<div class="frow ${selectMode?'selectable':''}"><div class="fl" data-picklevel="${esc(lv.id)}">${esc(lv.name)}<span class="pc">${fp(lp)}</span></div><div class="tiles">${tiles}</div></div>`;
+    }).join('');
+    body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">${fp(phasePct(s,t,ph,curGet))}</span></div>
+      <div class="bar"><button class="btn secondary small ${selectMode?'on':''}" id="selToggle">${selectMode?'✔ מצב בחירה מרובה פעיל':'בחירה מרובה'}</button>
+        <button class="btn small" id="bulkBtn" ${picked.size?'':'disabled'}>עדכון מרובה (${picked.size})</button>
+        <button class="btn secondary small" id="clearPick" ${picked.size?'':'disabled'}>נקה בחירה</button>
+        <span class="sum">${selectMode?'לחיצה על דירה או לובי מוסיפה/מסירה מהבחירה; לחיצה על שם קומה בוחרת את כל הקומה':'לחיצה על דירה פותחת את הפריטים שלה'}</span></div>
+      <div class="facade">${rows}</div>
+      <div class="legend">${settings.aptTypes.map(ty=>`<span><span class="typebadge ${typeCls(ty)}">${esc(ty)}</span></span>`).join('')}<span>מסגרת מקווקוות = לובי · משקל לובי בשלב: ${ph.lobbyWeight==null?1:ph.lobbyWeight} (דירה = 1)</span></div></div>`;
+  }
+  return head + body;
+}
+
+/* ---------- templates (trades / phases / items / variants) */
+function templatesView(){
+  const t = tradeById(setupT);
+  const chips = `<div class="chips"><span class="lbl">תחום:</span>${trades.map(x=>`<button class="chip ${x.id===(t&&t.id)?'on':''}" data-stt="${x.id}">${esc(x.name)}</button>`).join('')}</div>
+    <div class="bar"><div><label>הוספת תחום חדש</label><input type="text" id="newTrade" placeholder="למשל: איטום / גמרים" style="width:200px"></div><button class="btn secondary small" id="addTrade">+ הוסף תחום</button>
+      ${t?`<button class="btn danger small" id="delTrade">מחק את התחום "${esc(t.name)}"</button>`:''}</div>`;
+  if(!t) return `<div class="card"><h2>תבניות תחום ושלבים</h2>${chips}<div class="empty">אין תחומים. הוסף תחום.</div></div>`;
+  const typesCard = `<div class="card"><h2>סוגי דירה</h2><div class="sum" style="margin-bottom:6px;">משמשים להבדלי פריטים בין סוגי דירות (בשלבים לפי מרכיב). סוג הדירה נקבע בייבוא המבנה (מחיר מטרה / שוק חופשי / פנטהאוז).</div>
+    ${settings.aptTypes.map((x,i)=>`<div class="wrow"><span class="nm">${esc(x)}</span><button class="btn danger small" data-deltype="${i}" ${settings.aptTypes.length<=1?'disabled':''}>הסר</button></div>`).join('')}
+    <div class="bar" style="margin:8px 0 0;"><input type="text" id="newType" placeholder="סוג דירה חדש" style="width:180px"><button class="btn secondary small" id="addType">+ הוסף</button></div></div>`;
+  const phCards = t.phases.map((ph,pi)=>{
+    const itemList = (list, path)=> list.map((x,i)=>`<div class="wrow"><input type="text" value="${esc(x.n)}" data-ren="${path}|${i}"><input type="number" min="0" step="1" value="${x.w}" data-wt="${path}|${i}" title="משקל יחסי">${path.endsWith('|level')?`<select data-scope="${path}|${i}" title="באילו מפלסים הפריט קיים"><option value="" ${!x.scope?'selected':''}>כל המפלסים</option><option value="ground" ${x.scope==='ground'?'selected':''}>רק קרקע</option><option value="upper" ${x.scope==='upper'?'selected':''}>ללא קרקע</option></select>`:''}<button class="btn danger small" data-del="${path}|${i}">הסר</button></div>`).join('');
+    const addRow = path=> `<div class="bar" style="margin:6px 0 0;"><input type="text" placeholder="פריט חדש" id="new_${path.replace(/\W/g,'_')}" style="width:180px"><button class="btn secondary small" data-add="${path}">+ הוסף</button></div>`;
+    let inner;
+    if(ph.mode==='level'){
+      inner = `<h3>פריטים לכל מפלס</h3>${itemList(ph.levelItems||[], `${pi}|level`)}${addRow(`${pi}|level`)}`;
+    } else {
+      ph.compItems = ph.compItems || {apartment:[], lobby:[]}; ph.variants = ph.variants || {};
+      const variants = settings.aptTypes.map(ty=>{ const v = ph.variants[ty] || {add:[],remove:[]};
+        return `<div class="varbox"><b>${esc(ty)}</b> <span class="sum">- הבדלים מהליבה של הדירה</span>
+          <div class="sum" style="margin-top:6px;">תוספות:</div>${itemList(v.add||[], `${pi}|var|${ty}`)||'<div class="sum">אין</div>'}${addRow(`${pi}|var|${ty}`)}
+          <div class="sum" style="margin-top:8px;">הסרת פריטי ליבה (לא יחושבו בדירות מסוג זה):</div>
+          <div>${(ph.compItems.apartment||[]).map(x=>`<label class="inl" style="display:inline-flex; gap:5px; margin-inline-end:12px; font-weight:normal; color:var(--text);"><input type="checkbox" data-rm="${pi}|${ty}|${esc(x.n)}" ${(v.remove||[]).includes(x.n)?'checked':''}> ${esc(x.n)}</label>`).join('')||'<span class="sum">אין פריטי ליבה</span>'}</div></div>`; }).join('');
+      inner = `<div class="row2"><div class="f"><label>משקל לובי (דירה = 1)</label><input type="number" min="0" step="0.1" value="${ph.lobbyWeight==null?1:ph.lobbyWeight}" data-lw="${pi}"></div><div></div></div>
+        <h3>ליבת הדירה (משותפת לכל סוגי הדירות)</h3>${itemList(ph.compItems.apartment||[], `${pi}|apartment`)}${addRow(`${pi}|apartment`)}
+        <h3>פריטי לובי</h3>${itemList(ph.compItems.lobby||[], `${pi}|lobby`)||'<div class="sum">אין</div>'}${addRow(`${pi}|lobby`)}
+        <h3>הבדלים לפי סוג דירה</h3>${variants}`;
+    }
+    const wsum = t.phases.reduce((s,p)=>s+p.weight,0)||1;
+    return `<div class="card"><h2>שלב ${pi+1}: ${esc(ph.name)} <span class="sum">(${ph.mode==='level'?'מעקב לפי מפלס':'מעקב לפי מרכיב: דירות ולובי'}) · ${Math.round(ph.weight/wsum*100)}% מהתחום</span></h2>
+      <div class="row2"><div class="f"><label>שם השלב</label><input type="text" value="${esc(ph.name)}" data-pname="${pi}"></div>
+        <div class="f"><label>משקל השלב בתחום</label><input type="number" min="0" value="${ph.weight}" data-pw="${pi}"></div>
+        <div class="f"><label>רמת מעקב</label><select data-pmode="${pi}"><option value="level" ${ph.mode==='level'?'selected':''}>לפי מפלס</option><option value="component" ${ph.mode==='component'?'selected':''}>לפי מרכיב (דירה / לובי)</option></select></div>
+        <div class="f"><label>&nbsp;</label><button class="btn danger small" data-pdel="${pi}" ${t.phases.length<=1?'disabled':''}>הסר שלב</button></div></div>
+      ${inner}</div>`;
+  }).join('');
+  return `<div class="card"><h2>תבניות תחום ושלבים</h2>${chips}
+    <div class="bar"><div><label>שם שלב חדש בתחום "${esc(t.name)}"</label><input type="text" id="newPhase" placeholder="למשל: בדיקות / גמר" style="width:200px"></div><button class="btn secondary small" id="addPhase">+ הוסף שלב</button></div></div>
+    ${phCards}${typesCard}
+    <div class="note">לכל תחום מספר שלבים חופשי. בשלב "לפי מרכיב" יש ליבה משותפת לכל הדירות, ולכל סוג דירה אפשר להוסיף או להסיר פריטים. הסרת פריט לא מוחקת התקדמות שנרשמה - היא רק מפסיקה להיספר. התבניות שהוגדרו בהתחלה הן דוגמאות - ערוך אותן לפי העבודה בפועל.</div>`;
+}
+
+/* ---------- settings: import structure, basement zones, contractors, assignments, backup */
+function settingsView(){
+  const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
+    <div class="sum" style="margin-bottom:6px;">הדבק מ-Excel (בחר את העמודות והעתק): <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קרקע.</div>
+    <textarea id="impText" placeholder="1&#9;0&#9;1&#9;A&#9;4&#9;111.71&#9;לא"></textarea>
+    <div class="bar" style="margin-top:8px;"><label class="inl"><input type="checkbox" id="impLobby" checked> הוסף לובי בכל קומה</label>
+      <label class="inl"><input type="checkbox" id="impPent" checked> דירה יחידה בקומה העליונה = פנטהאוז</label>
+      <button class="btn" id="impGo">ייבא מבנה</button><span class="sum" id="impResult"></span></div>
+    <div class="sum">ייבוא של בניין שכבר קיים מחליף את מבנה הקומות והדירות שלו; התקדמות שנרשמה נשמרת לפי מזהה הדירה (בניין + קומה + מספר).</div></div>`;
+  const zoneCard = `<div class="card"><h2>מרתף - מרחבים נפרדים מהבניינים</h2>
+    <div class="sum" style="margin-bottom:6px;">כל חלק מרתף הוא "בניין" נפרד לגמרי: ללא דירות או לובי, עם מפלסים משלו. "נמצא מתחת ל..." הוא מידע בלבד.</div>
+    <div class="bar"><div><label>שם</label><input type="text" id="zName" placeholder="מרתף - חלק 1" style="width:160px"></div>
+      <div><label>נמצא מתחת ל... (מידע)</label><input type="text" id="zUnder" placeholder="בניינים 1, 2, 3, 11" style="width:200px"></div>
+      <div><label>מפלסים (מופרדים בפסיק)</label><input type="text" id="zLevels" value="רצפת מרתף, מפלס מרתף, תקרת מרתף" style="width:290px"></div>
+      <button class="btn secondary small" id="zAdd">+ הוסף מרחב מרתף</button>
+      <button class="btn secondary small" id="zPreset" title="מוסיף שלושה חלקים לפי הגדרת הפרויקט">3 חלקי המרתף של פסגת רמות</button></div></div>`;
+  const siteCard = `<div class="card"><h2>מבנים ומרחבים קיימים</h2>
+    ${sites.length===0?'<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>':`<table><thead><tr><th>שם</th><th>סוג</th><th>מפלסים</th><th>דירות</th><th></th></tr></thead><tbody>${sites.map(s=>`<tr><td class="l">${esc(s.name)}${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.kind==='building'?'בניין':'מרתף'}</td><td>${s.levels.length}</td><td>${s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0)}</td><td><button class="btn danger small" data-delsite="${s.id}">מחק</button></td></tr>`).join('')}</tbody></table>`}</div>`;
+  const conCard = `<div class="card"><h2>קבלנים</h2>
+    <div class="sum" style="margin-bottom:6px;">רשימת הקבלנים של המעקב (נפרדת מרשימת הקבלנים ביומן היומי). אפשר להדביק כמה שמות - שם בכל שורה.</div>
+    ${contractors.map(c=>`<div class="wrow"><span class="nm">${esc(c.name)}${c.active===false?' <span class="sum">(לא פעיל)</span>':''}</span><span class="sum">מוקצה ל-${assignments.filter(a=>a.contractorId===c.id && !a.to).length} תחומים/בניינים</span><button class="btn secondary small" data-concactive="${c.id}">${c.active===false?'החזר לפעיל':'סמן כלא פעיל'}</button><button class="btn danger small" data-condel="${c.id}" ${assignments.some(a=>a.contractorId===c.id && !a.to)?'disabled title="מוקצה כרגע - קודם מחליפים אותו"':''}>הסר</button></div>`).join('')||'<div class="sum">אין עדיין קבלנים.</div>'}
+    <textarea id="newCons" placeholder="שם קבלן בכל שורה" style="min-height:70px; margin-top:8px;"></textarea>
+    <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="addCons">+ הוסף קבלנים</button></div></div>`;
+  const assignCard = `<div class="card"><h2>הקצאת קבלן מבצע לתחום</h2>
+    <div class="sum" style="margin-bottom:6px;">מקצה קבלן לתחום בכל הבניינים (או כל חלקי המרתף) שעדיין אין להם קבלן בתחום הזה. החלפת קבלן אחר כך - במעקב המפורט.</div>
+    <div class="bar"><div><label>תחום</label><select id="asTrade">${trades.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
+      <div><label>קבלן</label><select id="asCon">${contractorOptions('')}</select></div>
+      <div><label>היקף</label><select id="asScope"><option value="building">כל הבניינים</option><option value="basement">כל חלקי המרתף</option><option value="all">הכול</option></select></div>
+      <button class="btn small" id="asGo">הקצה</button></div></div>`;
+  const backupCard = `<div class="card"><h2>גיבוי</h2><div class="bar"><button class="btn secondary" id="bkExport">הורד גיבוי (JSON)</button>
+      <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">טען גיבוי (החלפה מלאה)<input type="file" id="bkImport" accept="application/json" style="display:none;"></label></div>
+    <div class="sum">הנתונים נשמרים אוטומטית ב-Google Drive. הגיבוי הוא עותק מקומי נוסף.</div></div>`;
+  return importCard + zoneCard + siteCard + conCard + assignCard + backupCard;
+}
+
+/* ---------- monthly report (level granularity) */
+function reportRows(){
+  const from = rMonth+'-01', startGet = getAt(addDays(from,-1)), endGet = getAt(rMonth+'-31'), rows = [];
+  sites.forEach(s=>{ if(rS!=='all' && rS!==s.id) return;
+    trades.forEach(t=>{ if(rTrade!=='all' && rTrade!==t.id) return;
+      const con = contractorAt(s.id,t.id,rMonth+'-31'); if(rCon!=='all' && rCon!==con) return;
+      t.phases.forEach(ph=> [...s.levels].forEach(lv=>{
+        const a = levelPct(s,t,ph,lv,startGet), b = levelPct(s,t,ph,lv,endGet);
+        if(a==null || b==null || Math.abs(b-a)<0.05) return;
+        rows.push({site:s.name, trade:t.name, phase:ph.name, level:lv.name, con, s:a, e:b});
+      }));
+    });
+  });
+  return rows;
+}
+function reportView(){
+  const rows = reportRows(), byC = {}; rows.forEach(r=>{ const k = contractorName(r.con); const x = byC[k] || (byC[k] = {n:0, d:0}); x.n++; x.d += r.e-r.s; });
+  const months = []; { const d = new Date(); for(let i=0;i<14;i++){ months.push(isoOf(new Date(d.getFullYear(), d.getMonth()-i, 1)).slice(0,7)); } }
+  const body = rows.map(r=>`<tr><td class="l">${esc(r.site)}</td><td class="l">${esc(r.trade)}</td><td class="l">${esc(r.phase)}</td><td class="l">${esc(r.level)}</td><td class="l">${esc(contractorName(r.con))}</td><td>${Math.round(r.s)}%</td><td>${Math.round(r.e)}%</td><td>${r.e-r.s>=0?'+':''}${Math.round(r.e-r.s)}%</td></tr>`).join('');
+  return `<div class="card"><h2>דוח ביצוע חודשי</h2>
+    <div class="bar no-print">
+      <div><label>חודש</label><select id="rM">${months.map(m=>`<option value="${m}" ${m===rMonth?'selected':''}>${MONTHS[+m.slice(5)-1]} ${m.slice(0,4)}</option>`).join('')}</select></div>
+      <div><label>תחום</label><select id="rT"><option value="all">כל התחומים</option>${trades.map(t=>`<option value="${t.id}" ${rTrade===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
+      <div><label>בניין / מרתף</label><select id="rS">${siteOptions(rS,'הכול')}</select></div>
+      <div><label>קבלן מבצע</label><select id="rC"><option value="all">כל הקבלנים</option>${contractors.map(c=>`<option value="${c.id}" ${rCon===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <button class="btn secondary" id="rPrint">הדפסה / PDF</button><button class="btn secondary" id="rCsv">ייצוא Excel (CSV)</button></div>
+    ${rows.length===0?'<div class="empty">לא נמצאה התקדמות בחודש ובסינון שנבחרו.</div>':`
+    <div class="scroll"><table><thead><tr><th>בניין</th><th>תחום</th><th>שלב</th><th>מפלס</th><th>קבלן מבצע</th><th>% בתחילת החודש</th><th>% בסוף החודש</th><th>התקדמות</th></tr></thead><tbody>${body}</tbody></table></div>
+    <h3>סיכום לפי קבלן מבצע</h3>
+    <table style="max-width:520px"><thead><tr><th>קבלן</th><th>מפלסים שהתקדמו</th><th>התקדמות ממוצעת</th></tr></thead><tbody>${Object.keys(byC).map(c=>`<tr><td class="l">${esc(c)}</td><td>${byC[c].n}</td><td>+${Math.round(byC[c].d/byC[c].n)}%</td></tr>`).join('')}</tbody></table>`}
+    <div class="note no-print">הדוח משווה בין מצב בתחילת החודש לסופו, לכל מפלס בכל שלב. עלויות וחשבונות חלקיים אינם חלק מהגרסה הנוכחית.</div></div>`;
+}
+
+/* ---------- reminders */
+function dueLabel(r){
+  const d = remVis(r), today = todayStr();
+  if(r.status==='done') return '<span class="pill done">בוצע</span>';
+  if(d<today) return `<span class="pill over">באיחור ${Math.round((new Date(today)-new Date(d))/864e5)} ימים</span>`;
+  if(d===today) return '<span class="pill today">היום</span>';
+  return `<span class="pill soon">בעוד ${Math.round((new Date(d)-new Date(today))/864e5)} ימים</span>`;
+}
+function remView(){
+  const list = [...reminders].sort((a,b)=> (a.status==='done')-(b.status==='done') || remVis(a).localeCompare(remVis(b)));
+  return `<div class="card"><h2>תזכורות</h2>
+    <div class="sum" style="margin-bottom:8px;">תזכורת נקבעת בחלון העדכון של פריט בשלב לפי מפלס. חלון קופץ מופיע בכניסה לאפליקציה לכל מי שעובד, ביום היעד ואחריו, עד שמישהו מסמן "בוצע".</div>
+    ${list.length===0?'<div class="empty">אין תזכורות.</div>':list.map(r=>`<div class="remitem"><div class="t">${esc(r.title)} ${dueLabel(r)}</div>
+      <div class="d">${esc(describeKey(r.key))} · יעד: ${fmt(remVis(r))}${r.status==='done'?` · סומן "בוצע" ע"י ${esc(r.doneBy||'משתמש')}`:''}</div>
+      ${r.status==='open'?`<div class="right"><button class="btn small" data-done="${r.id}">בוצע</button><button class="btn secondary small" data-snooze="${r.id}">דחה למחר</button></div>`:''}</div>`).join('')}</div>`;
+}
+function showPopup(force){
+  const items = dueOpen(); if(!items.length && !force) return;
+  const box = document.getElementById('popupBox');
+  box.innerHTML = `<h2>⏰ תזכורות להיום</h2><div class="sub">${items.length?`${items.length} תזכורות שהגיע זמנן`:'אין כרגע תזכורות פתוחות להיום'}</div>
+    ${items.map(r=>`<div class="remitem"><div class="t">${esc(r.title)} ${dueLabel(r)}</div><div class="d">${esc(describeKey(r.key))}</div>
+    <div class="right"><button class="btn small" data-pdone="${r.id}">בוצע</button><button class="btn secondary small" data-psnooze="${r.id}">דחה למחר</button></div></div>`).join('')}
+    <div class="right" style="margin-top:6px;"><button class="btn secondary" id="popClose">סגור</button></div>`;
+  document.getElementById('popup').classList.add('on');
+  document.getElementById('popClose').onclick = ()=> document.getElementById('popup').classList.remove('on');
+  box.querySelectorAll('[data-pdone]').forEach(b=> b.onclick = ()=>{ markDone(b.dataset.pdone); showPopup(true); render(); });
+  box.querySelectorAll('[data-psnooze]').forEach(b=> b.onclick = ()=>{ snooze(b.dataset.psnooze); showPopup(true); render(); });
+}
+function markDone(id){ const r = reminders.find(x=>x.id===id); if(!r) return; r.status = 'done'; r.doneBy = (me&&me.name)||'משתמש'; r.doneOn = todayStr(); saveAll(); }
+function snooze(id){ const r = reminders.find(x=>x.id===id); if(!r) return; r.snoozedTo = addDays(todayStr(),1); saveAll(); }
+
+/* ============================================================== dialogs */
+const modal = html=>{ document.getElementById('editorBox').innerHTML = html; document.getElementById('editor').classList.add('on'); };
+const closeModal = ()=> document.getElementById('editor').classList.remove('on');
+
+/* one level-mode cell (with reminder) */
+function openCell(k){
+  const [sid,pk,unit,item] = k.split('|'), [tid] = pk.split('.');
+  const p = curGet(k), rem = reminders.find(r=>r.key===k && r.status==='open');
+  const hist = entriesOf(k).slice().reverse().map(h=>`<div><b>${fmt(h.date)}</b> · ${h.pct}% · ${esc(contractorName(h.contractorId))}${h.note?' · '+esc(h.note):''}${h.by?` <span class="sum">(${esc(h.by)})</span>`:''}</div>`).join('') || '<div>אין עדיין עדכונים</div>';
+  modal(`<h2>${esc(item)}</h2><div class="sub">${esc(describeKey(k))} · כרגע ${Math.round(p)}% · קבלן מבצע: <b id="edCon"></b></div>
+    <div class="f"><label>אחוז ביצוע: <b id="pv">${Math.round(p)}%</b></label><input type="range" id="edPct" min="0" max="100" step="5" value="${Math.round(p)}" style="width:100%"></div>
+    <div class="row2"><div class="f"><label>תאריך</label><input type="date" id="edDate" value="${todayStr()}"></div><div class="f"><label>הערות</label><input type="text" id="edNote"></div></div>
+    <div class="rem-box"><label class="inl"><input type="checkbox" id="edRem" ${rem?'checked':''}> קבע תזכורת לפריט זה</label>
+      <div id="remFields" style="${rem?'':'display:none;'} margin-top:8px;"><div class="f"><label>נוסח התזכורת</label><input type="text" id="edRemTitle" value="${esc(rem?rem.title:'פירוק טפסות - '+item)}"></div>
+      <div class="row2"><div class="f"><label>אחרי כמה ימים מהתאריך</label><input type="number" min="0" id="edRemDays" value="7"></div><div class="f"><label>יום היעד</label><div id="remDue" style="padding:8px 0;font-weight:bold;"></div></div></div>
+      <div class="sum">מספר הימים נקבע על ידך / היועץ / לפי התקן - האפליקציה רק מזכירה.</div></div></div>
+    <h3>היסטוריית עדכונים</h3><div class="hist">${hist}</div>
+    <div class="right" style="margin-top:14px;"><button class="btn" id="edSave">שמור עדכון</button><button class="btn secondary" id="edCancel">סגור</button></div>`);
+  const upd = ()=>{ document.getElementById('pv').textContent = document.getElementById('edPct').value+'%'; const d = document.getElementById('edDate').value, n = +document.getElementById('edRemDays').value||0;
+    document.getElementById('remDue').textContent = d ? fmt(addDays(d,n)) : ''; document.getElementById('edCon').textContent = contractorName(contractorAt(sid,tid,d||todayStr())); };
+  ['edPct','edDate','edRemDays'].forEach(id=> document.getElementById(id).oninput = upd); upd();
+  document.getElementById('edRem').onchange = e=> document.getElementById('remFields').style.display = e.target.checked ? '' : 'none';
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('edSave').onclick = ()=>{
+    const pct = +document.getElementById('edPct').value, date = document.getElementById('edDate').value || todayStr();
+    addEntry(sid,tid,pk,unit,item,pct,date,document.getElementById('edNote').value.trim());
+    if(document.getElementById('edRem').checked){
+      const days = +document.getElementById('edRemDays').value||0, title = document.getElementById('edRemTitle').value.trim()||'תזכורת';
+      if(rem){ rem.title = title; rem.baseDate = date; rem.due = addDays(date,days); rem.snoozedTo = null; }
+      else reminders.push({id:uid('rm'), key:k, title, baseDate:date, due:addDays(date,days), status:'open', snoozedTo:null, createdBy:(me&&me.name)||''});
+    } else if(rem){ reminders = reminders.filter(r=>r.id!==rem.id); }
+    saveAll(); closeModal(); render();
+  };
+}
+/* one apartment / lobby: all of its effective items */
+function openComp(compId){
+  const s = siteById(curS), t = tradeById(curT), ph = phaseOf(t,curP), pk = phaseKey(t,ph);
+  let lv, comp; s.levels.forEach(l=>{ const c = l.comps.find(x=>x.id===compId); if(c){ lv = l; comp = c; } });
+  if(!comp) return;
+  const items = unitItems(ph,comp), core = ((ph.compItems||{})[comp.kind]||[]).map(x=>x.n);
+  const rows = items.map((i,idx)=>`<div class="itemrow"><div class="nm">${esc(i.n)}${core.includes(i.n)?'':'<small>תוספת לסוג דירה זה</small>'}</div>
+    <input type="range" min="0" max="100" step="5" value="${curGet(keyOf(s.id,pk,compId,i.n))}" data-r="${idx}"><span><input type="number" min="0" max="100" step="5" value="${curGet(keyOf(s.id,pk,compId,i.n))}" data-n="${idx}"></span></div>`).join('');
+  modal(`<h2>${esc(comp.name)}${comp.kind==='apartment'?` <span class="typebadge ${typeCls(comp.type)}">${esc(comp.type)}</span>`:''}</h2><div class="sub">${comp.kind==='apartment'?`${esc(comp.rooms||'')}${comp.rooms?' חדרים · ':''}${comp.area?esc(comp.area)+' מ"ר · ':''}${comp.lay?'טיפוס '+esc(comp.lay):''}<br>`:''}${esc(s.name)} · ${esc(lv.name)} · ${esc(t.name)} (${esc(ph.name)}) · קבלן מבצע: <b id="edCon"></b></div>
+    ${rows||'<div class="empty">אין פריטים לרכיב זה.</div>'}<div class="row2" style="margin-top:10px;"><div class="f"><label>תאריך</label><input type="date" id="edDate" value="${todayStr()}"></div><div class="f"><label>הערות</label><input type="text" id="edNote"></div></div>
+    <div class="right" style="margin-top:8px;"><button class="btn" id="edSave">שמור</button><button class="btn secondary" id="edCancel">סגור</button></div>`);
+  const sync = ()=>{ document.getElementById('edCon').textContent = contractorName(contractorAt(s.id,t.id,document.getElementById('edDate').value||todayStr())); }; document.getElementById('edDate').oninput = sync; sync();
+  document.querySelectorAll('#editorBox [data-r]').forEach(r=> r.oninput = ()=>{ document.querySelector(`#editorBox [data-n="${r.dataset.r}"]`).value = r.value; });
+  document.querySelectorAll('#editorBox [data-n]').forEach(n=> n.oninput = ()=>{ document.querySelector(`#editorBox [data-r="${n.dataset.n}"]`).value = n.value; });
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('edSave').onclick = ()=>{
+    const date = document.getElementById('edDate').value || todayStr(), note = document.getElementById('edNote').value.trim(); let n = 0;
+    items.forEach((i,idx)=>{ const v = Math.max(0,Math.min(100,+document.querySelector(`#editorBox [data-n="${idx}"]`).value||0)), k = keyOf(s.id,pk,compId,i.n); if(v!==curGet(k)){ addEntry(s.id,t.id,pk,compId,i.n,v,date,note); n++; } });
+    if(n) saveAll(); closeModal(); render();
+  };
+}
+/* bulk: one item, several apartments / lobbies at once */
+function openBulk(){
+  const s = siteById(curS), t = tradeById(curT), ph = phaseOf(t,curP), pk = phaseKey(t,ph);
+  const comps = []; s.levels.forEach(l=> l.comps.forEach(c=>{ if(picked.has(c.id)) comps.push(c); }));
+  const names = []; comps.forEach(c=> unitItems(ph,c).forEach(i=>{ if(!names.includes(i.n)) names.push(i.n); }));
+  if(!names.length){ toast('לרכיבים שנבחרו אין פריטים'); return; }
+  modal(`<h2>עדכון מרובה (${comps.length} רכיבים)</h2><div class="sub">${esc(s.name)} · ${esc(t.name)} (${esc(ph.name)})</div>
+    <div class="f"><label>פריט לעדכון</label><select id="bkItem">${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select></div>
+    <div class="f"><label>אחוז ביצוע: <b id="pv">100%</b></label><input type="range" id="bkPct" min="0" max="100" step="5" value="100" style="width:100%"></div>
+    <div class="row2"><div class="f"><label>תאריך</label><input type="date" id="bkDate" value="${todayStr()}"></div><div class="f"><label>הערות</label><input type="text" id="bkNote"></div></div>
+    <div class="sum" id="bkCount"></div>
+    <div class="right" style="margin-top:10px;"><button class="btn" id="bkSave">החל על הנבחרים</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  const cnt = ()=>{ const n = comps.filter(c=> unitItems(ph,c).some(i=>i.n===document.getElementById('bkItem').value)).length; document.getElementById('bkCount').textContent = `הפריט קיים ב-${n} מתוך ${comps.length} הרכיבים שנבחרו; ברכיבים שאין בהם הפריט לא יתבצע עדכון.`; };
+  document.getElementById('bkItem').onchange = cnt; cnt();
+  document.getElementById('bkPct').oninput = e=> document.getElementById('pv').textContent = e.target.value+'%';
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('bkSave').onclick = ()=>{
+    const item = document.getElementById('bkItem').value, pct = +document.getElementById('bkPct').value, date = document.getElementById('bkDate').value||todayStr(), note = document.getElementById('bkNote').value.trim();
+    comps.forEach(c=>{ if(unitItems(ph,c).some(i=>i.n===item)) addEntry(s.id,t.id,pk,c.id,item,pct,date,note); });
+    picked.clear(); saveAll(); closeModal(); render();
+  };
+}
+/* replace the performing contractor of the current trade + site */
+function openSwap(){
+  const s = siteById(curS), t = tradeById(curT), cur = currentAssign(s.id,t.id);
+  modal(`<h2>החלפת קבלן מבצע</h2><div class="sub">${esc(t.name)} · ${esc(s.name)} · קבלן נוכחי: <b>${esc(contractorName(cur&&cur.contractorId))}</b></div>
+    <div class="f"><label>קבלן חדש</label><select id="swCon">${contractorOptions('', 'בחר קבלן...')}</select></div>
+    <div class="row2"><div class="f"><label>בתוקף מתאריך</label><input type="date" id="swDate" value="${todayStr()}"></div><div class="f"><label>סיבה</label><select id="swReason">${SWAP_REASONS.map(r=>`<option>${esc(r)}</option>`).join('')}</select></div></div>
+    <div class="f"><label>הערה</label><input type="text" id="swNote"></div>
+    <div class="note" style="margin-top:0;">עדכונים עד התאריך נשארים על שם הקבלן הקודם; מהתאריך ואילך על שם הקבלן החדש - כולל בדוח החודשי.</div>
+    <div class="right" style="margin-top:12px;"><button class="btn" id="swOk">החלף</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('swOk').onclick = ()=>{
+    const cid = document.getElementById('swCon').value; if(!cid){ toast('נא לבחור קבלן חדש'); return; }
+    const date = document.getElementById('swDate').value || todayStr();
+    if(cur){ cur.to = addDays(date,-1); cur.reason = document.getElementById('swReason').value; cur.note = document.getElementById('swNote').value.trim(); }
+    assignments.push({id:uid('as'), siteId:s.id, tradeId:t.id, contractorId:cid, from:date, to:null, reason:'', note:''});
+    saveAll(); closeModal(); render();
+  };
+}
+
+/* ============================================================== import / structure */
+function parseAptTable(text){
+  const rows = [];
+  String(text||'').split(/\r?\n/).forEach(line=>{
+    if(!line.trim()) return;
+    const c = line.split('\t').map(x=>x.trim());
+    if(c.length<3) return;
+    const b = parseInt(c[0],10), f = parseInt(c[1],10), n = parseInt(c[2],10);
+    if(isNaN(b)||isNaN(f)||isNaN(n)) return;
+    rows.push({b, f, n, lay:cleanName(c[3]||''), rooms:cleanName(c[4]||''), area:cleanName(c[5]||''), pt:/^(כן|yes|true|1)$/i.test(c[6]||'')});
+  });
+  return rows;
+}
+function importApartments(rows, opts){
+  const byB = {};
+  rows.forEach(r=>{ ((byB[r.b] = byB[r.b] || {})[r.f] = byB[r.b][r.f] || []).push(r); });
+  let nb = 0, na = 0;
+  Object.keys(byB).map(Number).sort((a,b)=>a-b).forEach(b=>{
+    const id = 'b'+b, floors = Object.keys(byB[b]).map(Number).sort((x,y)=>x-y);
+    const levels = floors.map(f=>{
+      const comps = byB[b][f].sort((x,y)=>x.n-y.n).map(a=>({id:`${id}-${f}-a${a.n}`, kind:'apartment', name:'דירה '+a.n, type: a.pt ? 'מחיר למשתכן' : 'שוק חופשי', lay:a.lay, rooms:a.rooms, area:a.area}));
+      if(opts.lobby) comps.push({id:`${id}-${f}-lobby`, kind:'lobby', name:'לובי'});
+      return {id: f===0 ? 'קרקע' : 'קומה '+f, name: f===0 ? 'קרקע' : 'קומה '+f, comps};
+    });
+    if(opts.pent && levels.length>1){ const top = levels[levels.length-1], apts = top.comps.filter(c=>c.kind==='apartment'); if(apts.length===1) apts[0].type = 'פנטהאוז'; }
+    na += levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0);
+    const ex = siteById(id);
+    if(ex){ ex.levels = levels; } else { sites.push({id, kind:'building', name:'בניין '+b, under:'', levels}); }
+    nb++;
+  });
+  ['שוק חופשי','מחיר למשתכן','פנטהאוז'].forEach(ty=>{ if(!settings.aptTypes.includes(ty)) settings.aptTypes.push(ty); });
+  sites.sort((x,y)=> (x.kind===y.kind ? 0 : x.kind==='building' ? -1 : 1) || String(x.name).localeCompare(String(y.name),'he',{numeric:true}));
+  return {nb, na};
+}
+function addZone(name, under, levelNames){
+  const id = uid('z');
+  sites.push({id, kind:'basement', name:cleanName(name)||'מרתף', under:cleanName(under), levels: levelNames.map(n=>({id:cleanName(n), name:cleanName(n), comps:[]}))});
+}
+
+/* ============================================================== wiring */
+function pathList(t, path){ const [pi,kind,ty] = path.split('|'), ph = t.phases[+pi];
+  if(kind==='level') return (ph.levelItems = ph.levelItems || []);
+  if(kind==='apartment') return ph.compItems.apartment;
+  if(kind==='lobby') return ph.compItems.lobby;
+  ph.variants = ph.variants || {}; const v = ph.variants[ty] || (ph.variants[ty] = {add:[],remove:[]}); return (v.add = v.add || []); }
+function wire(){
+  const on = (sel, fn)=> document.querySelectorAll(sel).forEach(fn);
+  on('[data-gosettings]', el=> el.onclick = e=>{ e.preventDefault(); tab = 'settings'; render(); });
+  /* overview */
+  const ob = document.getElementById('ovS'); if(ob) ob.onchange = ()=>{ ovS = ob.value; render(); };
+  on('[data-ovsel]', el=> el.onclick = e=>{ e.preventDefault(); ovS = el.dataset.ovsel; render(); window.scrollTo(0, document.body.scrollHeight); });
+  on('[data-go]', el=> el.onclick = ()=>{ const [s,t,p] = el.dataset.go.split('|'); curS = s; curT = t; curP = p; picked.clear(); tab = 'track'; render(); });
+  /* tracking */
+  on('[data-trade]', el=> el.onclick = ()=>{ curT = el.dataset.trade; curP = tradeById(curT).phases[0].id; picked.clear(); render(); });
+  on('[data-phase]', el=> el.onclick = ()=>{ curP = el.dataset.phase; picked.clear(); render(); });
+  const sb = document.getElementById('selS'); if(sb) sb.onchange = ()=>{ curS = sb.value; picked.clear(); render(); };
+  const sw = document.getElementById('swapBtn'); if(sw) sw.onclick = openSwap;
+  const fcb = document.getElementById('firstConBtn'); if(fcb) fcb.onclick = ()=>{ const cid = document.getElementById('firstCon').value; if(!cid){ toast('נא לבחור קבלן'); return; }
+    assignments.push({id:uid('as'), siteId:curS, tradeId:curT, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}); saveAll(); render(); };
+  on('[data-cell]', el=> el.onclick = ()=> openCell(el.dataset.cell));
+  on('[data-comp]', el=> el.onclick = ()=>{ if(selectMode){ const id = el.dataset.comp; picked.has(id) ? picked.delete(id) : picked.add(id); render(); } else openComp(el.dataset.comp); });
+  on('[data-picklevel]', el=> el.onclick = ()=>{ if(!selectMode) return; const s = siteById(curS), t = tradeById(curT), ph = phaseOf(t,curP), lv = s.levels.find(l=>l.id===el.dataset.picklevel);
+    const lw = ph.lobbyWeight==null?1:ph.lobbyWeight; const ids = lv.comps.filter(c=> unitItems(ph,c).length && !(c.kind==='lobby' && lw<=0)).map(c=>c.id); const all = ids.every(i=>picked.has(i)); ids.forEach(i=> all ? picked.delete(i) : picked.add(i)); render(); });
+  const st = document.getElementById('selToggle'); if(st) st.onclick = ()=>{ selectMode = !selectMode; if(!selectMode) picked.clear(); render(); };
+  const bk = document.getElementById('bulkBtn'); if(bk) bk.onclick = openBulk;
+  const cp = document.getElementById('clearPick'); if(cp) cp.onclick = ()=>{ picked.clear(); render(); };
+  /* templates */
+  on('[data-stt]', el=> el.onclick = ()=>{ setupT = el.dataset.stt; render(); });
+  const t = tradeById(setupT);
+  const at = document.getElementById('addTrade'); if(at) at.onclick = ()=>{ const n = cleanName(document.getElementById('newTrade').value); if(!n) return;
+    const nt = {id:uid('tr'), name:n, phases:[{id:uid('ph'), name:'שלב 1', weight:100, mode:'level', levelItems:[it('פריט 1')]}]}; trades.push(nt); setupT = nt.id; saveAll(); render(); };
+  const dt = document.getElementById('delTrade'); if(dt) dt.onclick = ()=>{ if(!t) return; const n = entries.filter(e=>e.key.split('|')[1].split('.')[0]===t.id).length;
+    if(confirm(`למחוק את התחום "${t.name}"?${n?`\nנרשמו בו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו.`:''}`)){ trades = trades.filter(x=>x.id!==t.id); assignments = assignments.filter(a=>a.tradeId!==t.id); setupT = ''; saveAll(); render(); } };
+  const ap = document.getElementById('addPhase'); if(ap && t) ap.onclick = ()=>{ const n = cleanName(document.getElementById('newPhase').value); if(!n) return; t.phases.push({id:uid('ph'), name:n, weight:20, mode:'level', levelItems:[it('פריט 1')]}); saveAll(); render(); };
+  if(t){
+    on('[data-ren]', el=> el.onchange = ()=>{ const [pi,kind,a,b2] = el.dataset.ren.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; const l = pathList(t,path); l[idx].n = cleanName(el.value) || l[idx].n; saveAll(); render(); });
+    on('[data-wt]', el=> el.onchange = ()=>{ const [pi,kind,a,b2] = el.dataset.wt.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; pathList(t,path)[idx].w = Math.max(0,+el.value||0); saveAll(); render(); });
+    on('[data-scope]', el=> el.onchange = ()=>{ const [pi,kind,i] = el.dataset.scope.split('|'); const x = pathList(t,`${pi}|${kind}`)[+i]; if(x){ if(el.value) x.scope = el.value; else delete x.scope; saveAll(); render(); } });
+    on('[data-del]', el=> el.onclick = ()=>{ const [pi,kind,a,b2] = el.dataset.del.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; const l = pathList(t,path); if(kind==='level' && l.length<=1) return; l.splice(idx,1); saveAll(); render(); });
+    on('[data-add]', el=> el.onclick = ()=>{ const path = el.dataset.add, inp = document.getElementById('new_'+path.replace(/\W/g,'_')), name = cleanName(inp.value); if(!name) return; pathList(t,path).push(it(name,1)); saveAll(); render(); });
+    on('[data-rm]', el=> el.onchange = ()=>{ const [pi,ty,name] = el.dataset.rm.split('|'), ph = t.phases[+pi]; ph.variants = ph.variants || {}; const v = ph.variants[ty] || (ph.variants[ty] = {add:[],remove:[]}); v.remove = el.checked ? [...(v.remove||[]), name] : (v.remove||[]).filter(x=>x!==name); saveAll(); render(); });
+    on('[data-lw]', el=> el.onchange = ()=>{ t.phases[+el.dataset.lw].lobbyWeight = Math.max(0, +el.value||0); saveAll(); render(); });
+    on('[data-pname]', el=> el.onchange = ()=>{ const ph = t.phases[+el.dataset.pname]; ph.name = cleanName(el.value) || ph.name; saveAll(); render(); });
+    on('[data-pw]', el=> el.onchange = ()=>{ t.phases[+el.dataset.pw].weight = Math.max(0, +el.value||0); saveAll(); render(); });
+    on('[data-pmode]', el=> el.onchange = ()=>{ const ph = t.phases[+el.dataset.pmode]; ph.mode = el.value;
+      if(ph.mode==='level' && !(ph.levelItems||[]).length) ph.levelItems = [it('פריט 1')];
+      if(ph.mode==='component'){ ph.compItems = ph.compItems || {apartment:[it('פריט דירה')], lobby:[]}; ph.variants = ph.variants || {}; if(ph.lobbyWeight==null) ph.lobbyWeight = 0.5; }
+      saveAll(); render(); });
+    on('[data-pdel]', el=> el.onclick = ()=>{ if(t.phases.length>1){ t.phases.splice(+el.dataset.pdel,1); saveAll(); render(); } });
+  }
+  on('[data-deltype]', el=> el.onclick = ()=>{ settings.aptTypes.splice(+el.dataset.deltype,1); saveAll(); render(); });
+  const aty = document.getElementById('addType'); if(aty) aty.onclick = ()=>{ const n = cleanName(document.getElementById('newType').value); if(n && !settings.aptTypes.includes(n)){ settings.aptTypes.push(n); saveAll(); render(); } };
+  /* settings */
+  const ig = document.getElementById('impGo'); if(ig) ig.onclick = ()=>{
+    const rows = parseAptTable(document.getElementById('impText').value);
+    if(!rows.length){ document.getElementById('impResult').textContent = 'לא זוהו שורות. ודא שהעתקת את העמודות בסדר הנכון (בניין, קומה, מספר דירה...).'; return; }
+    const r = importApartments(rows, {lobby:document.getElementById('impLobby').checked, pent:document.getElementById('impPent').checked});
+    saveAll(); toast(`יובאו ${r.nb} בניינים ו-${r.na} דירות`); render();
+  };
+  const za = document.getElementById('zAdd'); if(za) za.onclick = ()=>{ const lv = document.getElementById('zLevels').value.split(',').map(cleanName).filter(Boolean); if(!lv.length){ toast('נא להגדיר מפלסים'); return; }
+    addZone(document.getElementById('zName').value, document.getElementById('zUnder').value, lv); saveAll(); render(); };
+  const zp = document.getElementById('zPreset'); if(zp) zp.onclick = ()=>{ const lv = ['רצפת מרתף','מפלס מרתף','תקרת מרתף'];
+    [['מרתף - חלק 1','בניינים 1, 2, 3, 11'],['מרתף - חלק 2','בניינים 4, 5, 10'],['מרתף - חלק 3','בניינים 6, 7, 8, 9']].forEach(([n,u])=>{ if(!sites.some(s=>s.name===n)) addZone(n,u,lv); }); saveAll(); render(); };
+  on('[data-delsite]', el=> el.onclick = ()=>{ const s = siteById(el.dataset.delsite); if(!s) return; const n = entries.filter(e=>e.key.split('|')[0]===s.id).length;
+    if(confirm(`למחוק את "${s.name}"?${n?`\nנרשמו בו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו.`:''}`)){ sites = sites.filter(x=>x.id!==s.id); assignments = assignments.filter(a=>a.siteId!==s.id); saveAll(); render(); } });
+  const ac = document.getElementById('addCons'); if(ac) ac.onclick = ()=>{ const names = document.getElementById('newCons').value.split(/\r?\n/).map(cleanName).filter(Boolean); let n = 0;
+    names.forEach(nm=>{ if(!contractors.some(c=>c.name===nm)){ contractors.push({id:uid('c'), name:nm, active:true}); n++; } }); if(n){ saveAll(); toast(`נוספו ${n} קבלנים`); render(); } };
+  on('[data-condel]', el=> el.onclick = ()=>{ contractors = contractors.filter(c=>c.id!==el.dataset.condel); saveAll(); render(); });
+  on('[data-concactive]', el=> el.onclick = ()=>{ const c = contractors.find(x=>x.id===el.dataset.concactive); if(c){ c.active = c.active===false; saveAll(); render(); } });
+  const ag = document.getElementById('asGo'); if(ag) ag.onclick = ()=>{ const tid = document.getElementById('asTrade').value, cid = document.getElementById('asCon').value, scope = document.getElementById('asScope').value;
+    if(!cid){ toast('נא לבחור קבלן'); return; } let n = 0;
+    sites.forEach(s=>{ if(scope!=='all' && s.kind!==scope) return; if(currentAssign(s.id,tid)) return; assignments.push({id:uid('as'), siteId:s.id, tradeId:tid, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}); n++; });
+    saveAll(); toast(n ? `הוקצה ל-${n} מבנים/מרחבים` : 'לכל המבנים כבר יש קבלן בתחום זה'); render(); };
+  const be = document.getElementById('bkExport'); if(be) be.onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-מעקב-ביצוע-${todayStr()}.json`; a.click(); };
+  const bi = document.getElementById('bkImport'); if(bi) bi.onchange = e=>{ const f = e.target.files[0]; if(!f) return; const rd = new FileReader(); rd.onload = ()=>{ try{ const d = JSON.parse(rd.result);
+      if(confirm('לטעון את הגיבוי? כל הנתונים הנוכחיים יוחלפו (גם ב-Drive).')){ applyData(d); saveAll(); render(); toast('הגיבוי נטען'); } }catch(err){ toast('הקובץ אינו גיבוי תקין'); } }; rd.readAsText(f); };
+  /* report */
+  const rm = document.getElementById('rM'); if(rm){
+    rm.onchange = ()=>{ rMonth = rm.value; render(); }; document.getElementById('rT').onchange = e=>{ rTrade = e.target.value; render(); };
+    document.getElementById('rS').onchange = e=>{ rS = e.target.value; render(); }; document.getElementById('rC').onchange = e=>{ rCon = e.target.value; render(); };
+    document.getElementById('rPrint').onclick = ()=> window.print();
+    document.getElementById('rCsv').onclick = ()=>{ const q = x=>'"'+String(x).replace(/"/g,'""')+'"';
+      const csv = '﻿' + 'בניין,תחום,שלב,מפלס,קבלן,% תחילת חודש,% סוף חודש\n' + reportRows().map(r=>[r.site,r.trade,r.phase,r.level,contractorName(r.con),Math.round(r.s),Math.round(r.e)].map(q).join(',')).join('\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download = 'דוח-ביצוע-חודשי.csv'; a.click(); };
+  }
+  /* reminders */
+  on('[data-done]', el=> el.onclick = ()=>{ markDone(el.dataset.done); render(); });
+  on('[data-snooze]', el=> el.onclick = ()=>{ snooze(el.dataset.snooze); render(); });
+}
+['editor'].forEach(id=> document.getElementById(id).addEventListener('click', e=>{ if(e.target.id===id) closeModal(); }));
+document.getElementById('saveBtn').onclick = ()=> flushSave();
+
+/* ============================================================== Drive: sign-in, load, save, merge */
+const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
+const DRIVE_FILE_NAME = 'מעקב-ביצוע-נתונים.json';
+let accessToken = null, tokenClient = null, driveFileId = null, driveFileModifiedTime = null, tokenRefreshTimer = null, baseSnapshot = null;
+let driveSaveTimer = null, driveSaveInFlight = false, driveSavePending = false, driveDirty = false, driveSaveSeq = 0;
+let tokenRefreshPromise = null, pendingTokenError = null, driveAuthBroken = false;
+const driveVersion = o => (o && (o.headRevisionId || o.modifiedTime)) || null;
+function setDriveStatus(t){ const el = document.getElementById('driveSaveStatus'); if(el) el.textContent = t ? (' · ' + t) : ''; }
+function gateStatus(t){ const el = document.getElementById('gateStatus'); if(el) el.textContent = t; }
+function saveAll(){ driveDirty = true; driveSaveSeq++; setDriveStatus('שומר...'); clearTimeout(driveSaveTimer); driveSaveTimer = setTimeout(driveSaveNow, 800); }
+const snapshotPayload = ()=> JSON.parse(JSON.stringify(buildPayload()));
+
+/* ---- 3-way merge (same engine as the daily-log app): a collection of {id} rows merges row by row, a record field by field */
+function deepEqual(a,b){
+  if(a===b) return true; if(a==null||b==null) return a===b; if(typeof a!==typeof b) return false; if(typeof a!=='object') return a===b;
+  if(Array.isArray(a)!==Array.isArray(b)) return false;
+  if(Array.isArray(a)){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(!deepEqual(a[i],b[i])) return false; return true; }
+  const ak = Object.keys(a), bk = Object.keys(b); if(ak.length!==bk.length) return false;
+  for(const k of ak){ if(!Object.prototype.hasOwnProperty.call(b,k) || !deepEqual(a[k],b[k])) return false; } return true;
+}
+function mergeField(base, local, remote){
+  const lc = !deepEqual(local,base), rc = !deepEqual(remote,base);
+  if(!rc) return {value:local, conflict:false}; if(!lc) return {value:remote, conflict:false};
+  if(deepEqual(local,remote)) return {value:local, conflict:false};
+  return {value:local, conflict:true};
+}
+function mergeRecord(base, local, remote){
+  const merged = {...local}; let conflicts = 0;
+  new Set([...Object.keys(local||{}), ...Object.keys(remote||{}), ...Object.keys(base||{})]).forEach(k=>{ const r = mergeField(base&&base[k], local&&local[k], remote&&remote[k]); merged[k] = r.value; if(r.conflict) conflicts++; });
+  return {record:merged, conflicts};
+}
+function mergeRows(baseArr, localArr, remoteArr){
+  baseArr = Array.isArray(baseArr)?baseArr:[]; localArr = Array.isArray(localArr)?localArr:[]; remoteArr = Array.isArray(remoteArr)?remoteArr:[];
+  const bm = new Map(baseArr.filter(r=>r&&r.id).map(r=>[r.id,r])), lm = new Map(localArr.filter(r=>r&&r.id).map(r=>[r.id,r])), rm = new Map(remoteArr.filter(r=>r&&r.id).map(r=>[r.id,r]));
+  const ids = []; const seen = new Set(); [...localArr, ...remoteArr].forEach(r=>{ if(r&&r.id&&!seen.has(r.id)){ ids.push(r.id); seen.add(r.id); } });
+  const merged = []; let conflicts = 0;
+  ids.forEach(id=>{ const b = bm.get(id), l = lm.get(id), r = rm.get(id);
+    if(l && !r){ if(b && deepEqual(l,b)) return; merged.push(l); return; }
+    if(!l && r){ if(b && deepEqual(r,b)) return; if(!b){ merged.push(r); return; } return; }
+    if(!l && !r) return;
+    const m = mergeRecord(b,l,r); merged.push(m.record); conflicts += m.conflicts; });
+  return {merged, conflicts};
+}
+const COLLECTIONS = ['contractors','assignments','sites','trades','entries','reminders'];
+const getColl = n => ({contractors, assignments, sites, trades, entries, reminders})[n];
+function setColl(n,v){ if(n==='contractors') contractors=v; else if(n==='assignments') assignments=v; else if(n==='sites') sites=v; else if(n==='trades') trades=v; else if(n==='entries') entries=v; else if(n==='reminders') reminders=v; }
+
+async function driveSaveNow(){
+  if(driveSaveInFlight){ driveSavePending = true; return; }
+  driveSaveInFlight = true;
+  const seqAtStart = driveSaveSeq;
+  try{
+    const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime,headRevisionId`);
+    const meta = await metaRes.json();
+    if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
+    if(driveFileModifiedTime && driveVersion(meta) !== driveFileModifiedTime){
+      const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+      if(!contentRes.ok) throw new Error('שגיאה בקריאת הגרסה העדכנית מ-Drive לצורך מיזוג');
+      const remote = await contentRes.json(), base = baseSnapshot || remote; let conflicts = 0;
+      COLLECTIONS.forEach(n=>{ const r = mergeRows(base[n], getColl(n), remote[n]); setColl(n, r.merged); conflicts += r.conflicts; });
+      const sr = mergeRecord(base.settings, settings, remote.settings); settings = sr.record; conflicts += sr.conflicts;
+      invalidateIndex();
+      if(conflicts) toast(`מוזגו שינויים של משתמש אחר - ${conflicts} פריט/ים נערכו בו-זמנית (נשמרה הגרסה שלך)`);
+      render();
+    }
+    const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime,headRevisionId`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(buildPayload())});
+    const putJson = await putRes.json();
+    if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
+    driveFileModifiedTime = driveVersion(putJson); baseSnapshot = snapshotPayload();
+    if(driveSaveSeq === seqAtStart) driveDirty = false;
+    driveAuthBroken = false; hideDriveProblem();
+    setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){
+    setDriveStatus('⚠ שגיאת שמירה: ' + e.message);
+    showDriveProblem(e.auth ? 'auth' : 'error', e.auth ? e.message : ('שגיאת שמירה ל-Drive: ' + e.message));
+  }finally{
+    driveSaveInFlight = false;
+    if(driveSavePending){ driveSavePending = false; driveSaveNow(); }
+  }
+}
+/* explicit "💾 שמור": no debounce, and says clearly whether it reached Drive */
+async function flushSave(){
+  if(!driveFileId){ toast('אין חיבור ל-Drive - נא להתחבר'); return; }
+  if(!driveDirty && !driveSaveInFlight && !driveSavePending){ toast('הכול כבר שמור ב-Drive ✓'); return; }
+  clearTimeout(driveSaveTimer); setDriveStatus('שומר...');
+  const t0 = Date.now(); driveSaveNow();
+  while((driveSaveInFlight || driveSavePending) && Date.now()-t0 < 60000) await new Promise(r=>setTimeout(r,150));
+  toast(driveDirty ? '⚠ השמירה לא הושלמה - ראה את ההודעה' : 'נשמר ב-Drive ✓');
+}
+
+/* ---- token handling (same hardening as the daily-log app: error_callback, timeouts, one refresh at a time, explicit re-sign-in dialog) */
+function makeTokenClient(){ return google.accounts.oauth2.initTokenClient({client_id:DRIVE_CLIENT_ID, scope:DRIVE_SCOPES, callback:onDriveSignIn, error_callback:(err)=>{ if(pendingTokenError) pendingTokenError(err); }}); }
+function requestFreshToken(timeoutMs, force){
+  if(tokenRefreshPromise){ if(!force) return tokenRefreshPromise; if(pendingTokenError) pendingTokenError({type:'superseded_by_user_click'}); }
+  if(force && typeof google!=='undefined' && google.accounts) tokenClient = makeTokenClient();
+  tokenRefreshPromise = new Promise((resolve,reject)=>{
+    let settled = false, timer = null;
+    const finish = (fn,val)=>{ if(settled) return; settled = true; clearTimeout(timer); tokenClient.callback = onDriveSignIn; pendingTokenError = null; tokenRefreshPromise = null; fn(val); };
+    timer = setTimeout(()=>finish(reject,new Error('token refresh timed out')), timeoutMs||20000);
+    pendingTokenError = err=> finish(reject,new Error('token refresh failed: '+((err&&(err.type||err.message))||'unknown')));
+    tokenClient.callback = resp=>{ if(resp.error){ finish(reject,new Error(resp.error_description||resp.error)); return; } accessToken = resp.access_token; if(resp.expires_in) scheduleTokenRefresh(resp.expires_in); driveAuthBroken = false; finish(resolve,accessToken); };
+    try{ const cfg = {prompt:''}; if(me && me.email) cfg.hint = me.email; tokenClient.requestAccessToken(cfg); }catch(e){ finish(reject,e); }
+  });
+  return tokenRefreshPromise;
+}
+function scheduleTokenRefresh(sec){ clearTimeout(tokenRefreshTimer); tokenRefreshTimer = setTimeout(()=>{ requestFreshToken(20000).catch(()=>{ driveAuthBroken = true; showDriveProblem('auth','החיבור ל-Google Drive עומד לפוג. לחץ כדי לחדש אותו - כך שום שינוי לא יאבד.'); }); }, Math.max((sec-300)*1000, 30000)); }
+async function driveFetch(url, options={}){
+  const opts = Object.assign({}, options, {headers:Object.assign({}, options.headers, {Authorization:'Bearer '+accessToken})});
+  let res = await fetch(url, opts);
+  if(res.status===401){
+    const authError = ()=>{ const e = new Error('החיבור ל-Google Drive פג ולא ניתן לחדש אותו אוטומטית'); e.auth = true; return e; };
+    if(driveAuthBroken) throw authError();
+    try{ await requestFreshToken(20000); }catch(e){ driveAuthBroken = true; throw authError(); }
+    opts.headers.Authorization = 'Bearer '+accessToken; res = await fetch(url, opts);
+  }
+  return res;
+}
+let dpDismissedUntil = 0;
+function showDriveProblem(kind, message){
+  if(kind!=='auth' && Date.now() < dpDismissedUntil) return;
+  let bar = document.getElementById('driveProblemBar');
+  if(!bar){ bar = document.createElement('div'); bar.id = 'driveProblemBar'; bar.className = 'no-print'; document.body.appendChild(bar); }
+  if(bar.style.display==='flex' && bar.dataset.kind===kind) return;
+  bar.dataset.kind = kind;
+  bar.innerHTML = `<div class="dp-box"><div class="dp-icon">⚠</div><h2>${kind==='auth'?'נדרש חיבור מחדש ל-Google Drive':'השמירה ל-Drive נכשלה'}</h2><p>${esc(message)}</p>
+    <p class="dp-warn">השינויים האחרונים עדיין <b>לא נשמרו</b>. אל תסגור ואל תרענן את הדף לפני שהשמירה מצליחה.</p>
+    <div class="dp-actions"><button type="button" class="btn" id="dpFix">${kind==='auth'?'התחבר מחדש ושמור':'נסה לשמור שוב'}</button><button type="button" class="btn secondary" id="dpBackup">הורד גיבוי של מה שבמסך</button>${kind==='auth'?'':'<button type="button" class="btn secondary" id="dpClose">סגור (ינסה שוב ברקע)</button>'}</div></div>`;
+  bar.style.display = 'flex';
+  if(!document.title.startsWith('⚠')) document.title = '⚠ ' + document.title;
+  document.getElementById('dpBackup').onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-לא-שמור-${todayStr()}.json`; a.click(); };
+  const cb = document.getElementById('dpClose'); if(cb) cb.onclick = ()=>{ dpDismissedUntil = Date.now()+5*60*1000; hideDriveProblem(); };
+  document.getElementById('dpFix').onclick = ()=>{
+    if(kind==='auth'){
+      const fb = document.getElementById('dpFix'); fb.disabled = true; fb.textContent = 'ממתין לחלון ההתחברות של Google...';
+      requestFreshToken(120000, true).then(()=>{ hideDriveProblem(); saveAll(); }).catch(e=>{ fb.disabled = false; fb.textContent = 'נסה שוב להתחבר'; toast('ההתחברות לא הושלמה: '+String(e&&e.message||e)); });
+    } else { hideDriveProblem(); saveAll(); }
+  };
+}
+function hideDriveProblem(){ const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none'; if(document.title.startsWith('⚠ ')) document.title = document.title.slice(2); }
+window.addEventListener('beforeunload', e=>{ if(driveDirty){ e.preventDefault(); e.returnValue = ''; return ''; } });
+setInterval(()=>{ if(driveDirty && !driveSaveInFlight && !driveAuthBroken && !tokenRefreshPromise && driveFileId) saveAll(); }, 45000);
+
+window.addEventListener('load', ()=>{
+  if(typeof google==='undefined' || !google.accounts){ gateStatus('שגיאה: ספריית ההתחברות של Google לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.'); return; }
+  tokenClient = makeTokenClient();
+  document.getElementById('gateSignInBtn').onclick = ()=>{ gateStatus('פותח חלון התחברות של Google...'); tokenClient.requestAccessToken({prompt:''}); };
+});
+async function onDriveSignIn(resp){
+  if(resp.error){ gateStatus('שגיאה בהתחברות: '+resp.error+(resp.error_description?(' - '+resp.error_description):'')); return; }
+  accessToken = resp.access_token; if(resp.expires_in) scheduleTokenRefresh(resp.expires_in);
+  gateStatus('טוען נתונים מ-Drive...');
+  try{
+    await loadOrCreateDriveFile();
+    try{ const u = await (await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo')).json(); me = {name:u.name||(u.email||'').split('@')[0]||'משתמש', email:(u.email||'').toLowerCase()}; }catch(e){ me = {name:'משתמש', email:''}; }
+    document.getElementById('signInGate').style.display = 'none';
+    document.getElementById('topbar').style.visibility = 'visible';
+    render(); showPopup(false);
+  }catch(e){ gateStatus('שגיאה בטעינת הנתונים מ-Drive: '+e.message); }
+}
+async function loadOrCreateDriveFile(){
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime,headRevisionId)`);
+  const listJson = await listRes.json();
+  if(!listRes.ok) throw new Error(listJson.error ? listJson.error.message : 'שגיאה בחיפוש הקובץ ב-Drive');
+  if(listJson.files && listJson.files.length>0){
+    driveFileId = listJson.files[0].id; driveFileModifiedTime = driveVersion(listJson.files[0]);
+    const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+    if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
+    applyData(await contentRes.json());
+  } else {
+    applyData({});
+    const boundary = 'tracking_boundary_' + Date.now();
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({name:DRIVE_FILE_NAME, mimeType:'application/json'})}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(buildPayload())}\r\n--${boundary}--`;
+    const createRes = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime,headRevisionId', {method:'POST', headers:{'Content-Type':'multipart/related; boundary='+boundary}, body});
+    const createJson = await createRes.json();
+    if(!createRes.ok) throw new Error(createJson.error ? createJson.error.message : 'שגיאה ביצירת הקובץ ב-Drive');
+    driveFileId = createJson.id; driveFileModifiedTime = driveVersion(createJson);
+  }
+  baseSnapshot = snapshotPayload();
+}
+window.addEventListener('beforeprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.dataset.pd = b.style.display; b.style.display = 'none'; } });
+window.addEventListener('afterprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.style.display = b.dataset.pd || ''; } });
+</script>
+</body>
+</html>
