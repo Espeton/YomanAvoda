@@ -181,7 +181,13 @@
      than the viewport (main is already full-width in this tab) scrolls the page horizontally
      instead of scrolling inside a local box - an acceptable trade for the header never moving. */
   #tbx_body .tbx-matrix-wrap{max-height:none; overflow:visible;}
-  #tbx_body .tbx-matrix thead th{top: var(--topbar-h, 0px); z-index:90;}
+  /* 22.10.2026: the filter row (project / month / ת.ז search + save) is frozen too, right below the top bar,
+     so the search box is always reachable without scrolling back up; the day-header row then sticks under it
+     (--tbx-sticky-h = measured height of #tbx_sticky, set from JS in renderToolbox). */
+  #tbx_sticky{position:sticky; top:var(--topbar-h, 0px); z-index:95; background:var(--card); padding:6px 0 2px; border-bottom:1px solid var(--border); margin-bottom:6px;}
+  #tbx_sticky .field{margin-bottom:6px;}
+  #tbx_body .tbx-matrix thead th{top: calc(var(--topbar-h, 0px) + var(--tbx-sticky-h, 0px)); z-index:90;}
+  @media print{ #tbx_sticky{position:static !important; border:none;} }
   #tbx_body .tbx-matrix thead .tbx-id-cell, #tbx_body .tbx-matrix thead .tbx-name-cell, #tbx_body .tbx-matrix thead .tbx-serial-cell{z-index:91;}
   .tbx-matrix{border-collapse:collapse; font-size:11px; white-space:nowrap; table-layout:fixed;}
   .tbx-matrix th, .tbx-matrix td{border:1px solid var(--border); padding:2px 3px; text-align:center;}
@@ -651,7 +657,7 @@ const toolboxRecordId = (projectId, date)=> `tbx_${projectId}_${date}`;
    not random, so two browsers backfilling the same untouched legacy row - or this browser and a
    remote payload saved by a not-yet-refreshed older version - agree on the id instead of
    duplicating the row on merge. Also run on the remote/base payloads right before merging. */
-const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+const LOG_ROW_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','deductions','planning','dailyWork','ordersPlaced','orders'];
 function normalizeLogsForMerge(logsArr){
   (logsArr||[]).forEach(l=>{
     if(!l) return;
@@ -769,7 +775,7 @@ function mergeRowsById(baseArr, localArr, remoteArr, mergeRowFn){
   });
   return {merged, conflicts};
 }
-const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','planning','dailyWork','ordersPlaced','orders'];
+const LOG_ARRAY_FIELDS = ['attendance','equipment','execution','photos','notesPhotos','visitors','exceptions','deductions','planning','dailyWork','ordersPlaced','orders'];
 function mergeLogRecord(base, local, remote){ return mergeRecord(base, local, remote, LOG_ARRAY_FIELDS); }
 /* Top-level entry: merges one whole collection (array of records with id - everything in the
    payload except `company`, which is a single record merged directly through mergeRecord). */
@@ -991,7 +997,7 @@ function resolveLogMergeConflict(ref, chosenValue){
   render();
 }
 const LOG_FIELD_LABELS = {
-  weather:'מזג אוויר', companyEmployees:'עובדי חברה', notes:'הערות', notesPhotos:'תמונות בהערות', signedBy:'נחתם ע"י', signedAt:'נחתם בתאריך',
+  weather:'מזג אוויר', companyEmployees:'עובדי חברה', notes:'הערות', notesPhotos:'תמונות בהערות', deductions:'קיזוזים מקבלן', signedBy:'נחתם ע"י', signedAt:'נחתם בתאריך',
   siteManagerAtDate:'מנהל עבודה', date:'תאריך', projectId:'פרויקט', subProjectId:'תת-פרויקט', serialNumber:'מספר סידורי',
   attendance:'נוכחות קבלני משנה', equipment:'כלי צמ"ה', execution:'תיעוד ביצוע', photos:'תיעוד צילומי', visitors:'ביקורים באתר',
   exceptions:'חריגים', planning:'תכנון עבודה עתידית', dailyWork:'פירוט יומיות', ordersPlaced:'הזמנות שבוצעו', orders:'הזמנות שהתקבלו',
@@ -1371,6 +1377,7 @@ function buildLogPrintoutHtml(log){
       ${normalizeContractorRows(log.planning).length?`<h3>תכנון</h3>${buildContractorRowsTableHtml(log.planning,'תכנון','')}`:''}
       ${(log.ordersPlaced&&log.ordersPlaced.length)?`<h3>הזמנות שבוצעו</h3>${buildOrdersPlacedTableHtml(log)}`:''}
       ${(log.orders&&log.orders.length)?`<h3>הזמנות שהתקבלו</h3>${buildOrdersTableHtml(log)}`:''}
+      ${buildDeductionsHtml(log) ? `<h3>קיזוזים מקבלן</h3>${buildDeductionsHtml(log)}` : ''}
       ${((log.notes&&log.notes.trim()) || (log.notesPhotos&&log.notesPhotos.length))?`<h3>הערות</h3>${(log.notes&&log.notes.trim())?`<div style="white-space:pre-wrap;">${esc(log.notes)}</div>`:''}${buildThumbsHtml(log.notesPhotos, true)}`:''}
       ${log.signedBy?`<div class="stamp">נחתם<br><small>${esc(log.signedBy)} · ${log.signedAt}</small></div>`:''}
     </div>
@@ -2597,7 +2604,7 @@ function newDraft(){
   return {
     id: uid('log'), projectId: defaultProj ? defaultProj.id : '', subProjectId: defaultSubProj ? defaultSubProj.id : '', date: todayStr(),
     weather:'', attendance:[], equipment:[], companyEmployees:'', execution:[], photos:[], visitors:[],
-    exceptions:[], planning:[], dailyWork:[], ordersPlaced:[], orders:[], notes:'', notesPhotos:[], siteManagerAtDate:'', signedBy:'', signedAt:''
+    exceptions:[], planning:[], dailyWork:[], ordersPlaced:[], orders:[], notes:'', notesPhotos:[], deductions:[], siteManagerAtDate:'', signedBy:'', signedAt:''
   };
 }
 /* Daily-log jobsite photos (15.10.2026): up to 20 per day, compressed a bit harder than before
@@ -2659,7 +2666,7 @@ function draftHasContent(){
     (draft.companyEmployees&&draft.companyEmployees.trim()) || (draft.planning&&draft.planning.length) ||
     (draft.dailyWork&&draft.dailyWork.length) || (draft.orders&&draft.orders.length) ||
     (draft.ordersPlaced&&draft.ordersPlaced.length) ||
-    (draft.notes&&draft.notes.trim()) || (draft.notesPhotos&&draft.notesPhotos.length) || draft.weather);
+    (draft.notes&&draft.notes.trim()) || (draft.notesPhotos&&draft.notesPhotos.length) || (draft.deductions&&draft.deductions.length) || draft.weather);
 }
 /* Called after the project or date changes on the daily-log form: prevents two logs
    existing for the same project+date. If a saved log already exists for that
@@ -2746,6 +2753,7 @@ function renderDailyLog(main, loadId){
   if(typeof draft.companyEmployees !== 'string') draft.companyEmployees = '';
   if(typeof draft.notes !== 'string') draft.notes = '';
   if(!Array.isArray(draft.notesPhotos)) draft.notesPhotos = [];
+  if(!Array.isArray(draft.deductions)) draft.deductions = [];
   if(!isLoadingExisting && draft.projectId && !draft.siteManagerAtDate){
     updateSiteManagerForDraft();
   }
@@ -2862,6 +2870,12 @@ function renderDailyLog(main, loadId){
       <button class="btn secondary small" id="addOrder">+ הוסף הזמנה שהתקבלה</button>
     </div>
 
+    <div id="deductionsSection" class="${draft.deductions.length===0?'no-print':''}">
+      <h3 style="margin-top:22px;">קיזוזים מקבלן</h3>
+      <div id="deductionsRows"></div>
+      <button class="btn secondary small" id="addDeduction">+ הוסף קיזוז</button>
+    </div>
+
     <div id="notesSection" class="${(!draft.notes.trim() && draft.notesPhotos.length===0)?'no-print':''}">
       <h3 style="margin-top:22px;">הערות</h3>
       <div class="framed-box">
@@ -2918,6 +2932,7 @@ function renderDailyLog(main, loadId){
   renderPlanningRows();
   renderOrdersPlacedRows();
   renderOrdersRows();
+  renderDeductionsRows();
 
   ['companyEmployeesField','notesField'].forEach(id=>{
     autoGrowTextarea(document.getElementById(id));
@@ -2930,6 +2945,7 @@ function renderDailyLog(main, loadId){
     scheduleAutosave();
   };
   document.getElementById('addException').onclick = ()=>{ draft.exceptions.push({id:uid('exc'), contractorId:'', description:''}); renderExceptionsRows(); scheduleAutosave(); };
+  document.getElementById('addDeduction').onclick = ()=>{ draft.deductions.push({id:uid('ded'), contractorId:'', crewId:'', reason:'', amount:''}); renderDeductionsRows(); scheduleAutosave(); };
   document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:''}); renderPlanningRows(); scheduleAutosave(); };
   document.getElementById('addDailyWork').onclick = ()=>{
     draft.dailyWork.push({id:uid('dw'), contractorId:'', days:'', hours:'', description:''});
@@ -3417,6 +3433,70 @@ function renderDailyWorkRows(){
   initSearchableSelects(wrap);
 }
 
+/* ---- "קיזוזים מקבלן" (22.10.2026): a deduction from a contractor's account - e.g. equipment the company
+   supplied, or work the company did on the contractor's behalf that he failed to do. Row:
+   {id, contractorId, crewId, reason (free text), amount (₪)}. The section ends with a per-contractor total. ---- */
+const fmtShekel = n => '₪ ' + (Math.round((Number(n)||0)*100)/100).toLocaleString('he-IL');
+function deductionsSummaryHtml(list){
+  const m = new Map();
+  (list||[]).forEach(d=>{ const a = Number(d.amount)||0; if(!d.contractorId && !a) return; m.set(d.contractorId||'', (m.get(d.contractorId||'')||0) + a); });
+  if(m.size===0) return '';
+  let total = 0;
+  const rows = [...m.entries()].map(([id,sum])=>{ total += sum; const c = id ? contractors.find(x=>x.id===id) : null; return `<tr><td>${esc(c?c.name:'ללא קבלן')}</td><td style="text-align:center;">${fmtShekel(sum)}</td></tr>`; }).join('');
+  return `<h3 style="margin-top:14px; font-size:13px;">סיכום קיזוזים לפי קבלן</h3>
+    <table class="log-table"><colgroup><col style="width:65%"><col style="width:35%"></colgroup><thead><tr><th>קבלן משנה</th><th>סה"כ לקיזוז</th></tr></thead>
+    <tbody>${rows}<tr style="font-weight:bold;"><td>סה"כ כל הקבלנים</td><td style="text-align:center;">${fmtShekel(total)}</td></tr></tbody></table>`;
+}
+function buildDeductionsHtml(log){
+  const rows = (log.deductions||[]).filter(d=> d.contractorId || d.reason || d.amount);
+  if(rows.length===0) return '';
+  const trs = rows.map(d=>{
+    const c = d.contractorId ? contractors.find(x=>x.id===d.contractorId) : null;
+    const cr = d.crewId ? crews.find(x=>x.id===d.crewId) : null;
+    return `<tr><td>${esc(c?c.name:'—')}</td><td>${esc(cr?cr.name:'')}</td><td style="white-space:pre-wrap;">${esc(d.reason||'')}</td><td style="text-align:center;">${d.amount!==''&&d.amount!=null?fmtShekel(d.amount):''}</td></tr>`;
+  }).join('');
+  return `<table class="log-table"><colgroup><col style="width:24%"><col style="width:18%"><col style="width:40%"><col style="width:18%"></colgroup><thead><tr><th>קבלן משנה</th><th>קבוצה</th><th>סיבה להורדה</th><th>סכום להורדה (₪)</th></tr></thead><tbody>${trs}</tbody></table>${deductionsSummaryHtml(rows)}`;
+}
+function renderDeductionsRows(){
+  const wrap = document.getElementById('deductionsRows');
+  if(!wrap) return;
+  const section = document.getElementById('deductionsSection');
+  if(section) section.classList.toggle('no-print', draft.deductions.length===0);
+  if(draft.deductions.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו קיזוזים.</div>'; return; }
+  const allContractors = sortContractorsAlpha(contractors);
+  const crewCell = (row,i)=>{
+    if(!row.contractorId) return '';
+    const opts = crewsForContractor(row.contractorId);
+    if(opts.length===0) return '';
+    return `<select class="ded_crew searchable" data-i="${i}"><option value="">ללא קבוצה מסוימת</option>${opts.map(cr=>`<option value="${cr.id}" ${row.crewId===cr.id?'selected':''}>${esc(cr.name)}</option>`).join('')}</select>`;
+  };
+  wrap.innerHTML = `
+    <table class="log-table has-actions">
+      <colgroup><col style="width:24%"><col style="width:18%"><col style="width:36%"><col style="width:140px"><col style="width:50px"></colgroup>
+      <thead><tr><th>קבלן משנה</th><th>קבוצה</th><th>סיבה להורדה</th><th>סכום להורדה (₪)</th><th></th></tr></thead>
+      <tbody>
+        ${draft.deductions.map((row,i)=>`
+          <tr>
+            <td><select class="ded_contractor searchable" data-i="${i}"><option value="">בחר...</option>${allContractors.map(c=>`<option value="${c.id}" ${row.contractorId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></td>
+            <td>${crewCell(row,i)}</td>
+            <td><textarea class="ded_reason" data-i="${i}" placeholder="לדוגמה: מנוף שסופק לקבלן / עבודה שבוצעה על חשבונו">${esc(row.reason||'')}</textarea><div class="print-mirror">${esc(row.reason||'')}</div></td>
+            <td><input type="number" min="0" step="0.01" class="ded_amount" data-i="${i}" value="${esc(row.amount)}" placeholder="₪" style="text-align:center;"></td>
+            <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div id="deductionsSummary">${deductionsSummaryHtml(draft.deductions)}</div>`;
+  const refreshSummary = ()=>{ const el = document.getElementById('deductionsSummary'); if(el) el.innerHTML = deductionsSummaryHtml(draft.deductions); };
+  wrap.querySelectorAll('.ded_contractor').forEach(el=>el.onchange = e=>{ const i = +e.target.dataset.i; draft.deductions[i].contractorId = e.target.value; draft.deductions[i].crewId = ''; renderDeductionsRows(); scheduleAutosave(); });
+  wrap.querySelectorAll('.ded_crew').forEach(el=>el.onchange = e=>{ draft.deductions[+e.target.dataset.i].crewId = e.target.value; scheduleAutosave(); });
+  wrap.querySelectorAll('.ded_reason').forEach(el=>{
+    autoGrowTextarea(el);
+    el.oninput = e=>{ const i = +e.target.dataset.i; draft.deductions[i].reason = e.target.value; const mirror = e.target.parentElement.querySelector('.print-mirror'); if(mirror) mirror.textContent = e.target.value; autoGrowTextarea(e.target); scheduleAutosave(); };
+  });
+  wrap.querySelectorAll('.ded_amount').forEach(el=>el.oninput = e=>{ draft.deductions[+e.target.dataset.i].amount = e.target.value; refreshSummary(); scheduleAutosave(); });
+  wrap.querySelectorAll('.rm-btn').forEach(el=>el.onclick = e=>{ draft.deductions.splice(+e.target.dataset.i,1); renderDeductionsRows(); scheduleAutosave(); });
+  initSearchableSelects(wrap);
+}
 function renderExceptionsRows(){
   const wrap = document.getElementById('exceptionsRows');
   if(!wrap) return;
@@ -3858,6 +3938,7 @@ function renderToolbox(main){
   const printableContractors = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).length>0));
   card.innerHTML = `
     <h2>טולבוקס - נוכחות והדרכות</h2>
+    <div id="tbx_sticky">
     <div class="grid grid-3">
       <div class="field"><label>פרויקט *</label>
         <select id="tbx_project" class="searchable">
@@ -3868,7 +3949,8 @@ function renderToolbox(main){
       <div class="field"><label>חודש *</label><input type="month" id="tbx_month" value="${toolboxMonth}"></div>
       <div class="field"><label>חיפוש לפי ת.ז / דרכון</label><input id="tbx_search" placeholder="הקלידו חלק מהמספר..." value="${esc(toolboxSearchQuery)}"></div>
     </div>
-    <div class="row-actions no-print" style="margin-top:0;"><button class="btn" id="tbx_saveBtn">💾 שמור</button><span class="hint" style="align-self:center;">השינויים נשמרים אוטומטית; הכפתור שומר מיד ומאשר שהכול הגיע ל-Drive.</span></div>
+    <div class="row-actions no-print" style="margin-top:0;"><button class="btn small" id="tbx_saveBtn" title="השינויים נשמרים אוטומטית; הכפתור שומר מיד ומאשר שהכול הגיע ל-Drive">💾 שמור</button></div>
+    </div>
     <div id="tbx_body" style="margin-top:8px;"></div>
     ${printableContractors.length>0 ? `
     <div class="row-actions no-print" style="margin-top:18px; border-top:1px dashed var(--border); padding-top:14px;">
@@ -3894,6 +3976,8 @@ function renderToolbox(main){
   `;
   main.appendChild(card);
   document.getElementById('tbx_saveBtn').onclick = flushSave;
+  const setStickyH = ()=>{ const s = document.getElementById('tbx_sticky'); if(s) document.documentElement.style.setProperty('--tbx-sticky-h', s.offsetHeight + 'px'); };
+  setStickyH(); window.addEventListener('resize', setStickyH); setTimeout(setStickyH, 50);
   document.getElementById('tbx_project').onchange = e=>{ toolboxProjectId = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_month').onchange = e=>{ if(e.target.value) toolboxMonth = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_search').oninput = e=>{ toolboxSearchQuery = e.target.value; toolboxApplySearchFilter(); };
