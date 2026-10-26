@@ -592,7 +592,8 @@ function settingsView(){
       <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">טען גיבוי (החלפה מלאה)<input type="file" id="bkImport" accept="application/json" style="display:none;"></label></div>
     <div class="sum">הנתונים נשמרים אוטומטית ב-Google Drive. הגיבוי הוא עותק מקומי נוסף.</div></div>`;
   const shareCard = (isAdminEmail(currentEmail) && driveFileId) ? `<div class="card" id="shareCard">${sharingCardInner()}</div>` : '';
-  return importCard + zoneCard + siteCard + conCard + assignCard + shareCard + backupCard;
+  const switchCard = `<div class="card" id="switchCard">${switchFileCardInner()}</div>`;
+  return importCard + zoneCard + siteCard + conCard + assignCard + shareCard + switchCard + backupCard;
 }
 
 /* ---------- monthly report (level granularity) */
@@ -826,6 +827,7 @@ function wire(){
   on('[data-gosettings]', el=> el.onclick = e=>{ e.preventDefault(); tab = 'settings'; render(); });
   /* overview */
   const shc = document.getElementById('shareCard'); if(shc) wireSharingCard(shc);
+  const swf = document.getElementById('sw_file'); if(swf) swf.onclick = switchDataFile;
   const ob = document.getElementById('ovS'); if(ob) ob.onchange = ()=>{ ovS = ob.value; render(); };
   on('[data-ovsel]', el=> el.onclick = e=>{ e.preventDefault(); ovS = el.dataset.ovsel; render(); window.scrollTo(0, document.body.scrollHeight); });
   on('[data-go]', el=> el.onclick = ()=>{ const [s,t,p] = el.dataset.go.split('|'); curS = s; curT = t; curP = p; picked.clear(); tab = 'track'; render(); });
@@ -1194,6 +1196,30 @@ function wireSharingCard(root){
     }catch(e){ toast('השיתוף נכשל: ' + e.message); }
   };
   refreshSharingList(root);
+}
+/* "Switch data file" (all users, 26.10.2026): a user who already signed in once before the sharing fix may be sitting on a private
+   EMPTY copy of the file; this lets him connect to the shared one (Picker) from inside the app. */
+function switchFileCardInner(){
+  return `<h2>חיבור לקובץ נתונים משותף</h2>
+    <div class="sum" style="margin-bottom:8px;">אם אתה רואה מסך ריק למרות שהמנהל שיתף איתך את הקובץ - לחץ למטה ובחר את הקובץ <b>${esc(DRIVE_FILE_NAME)}</b> שהמנהל שיתף. הנתונים שמוצגים עכשיו יוחלפו בנתוני הקובץ שבחרת.</div>
+    <button class="btn secondary" id="sw_file">בחר קובץ נתונים משותף</button>`;
+}
+async function switchDataFile(){
+  if(!PICKER_API_KEY){ toast('בחירת הקובץ עדיין לא הופעלה (חסר מפתח Google Picker)'); return; }
+  try{
+    const doc = await openFilePicker();
+    if(!doc) return;
+    if(doc.name !== DRIVE_FILE_NAME){ toast(`נבחר קובץ בשם "${doc.name}" - יש לבחור "${DRIVE_FILE_NAME}"`); return; }
+    if(doc.id === driveFileId){ toast('כבר מחובר לקובץ הזה'); return; }
+    if(!confirm('לעבור לקובץ הנתונים שנבחר? הנתונים שמוצגים עכשיו יוחלפו בנתוני הקובץ שנבחר.')) return;
+    const mr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${doc.id}?fields=id,trashed,modifiedTime,headRevisionId`);
+    const meta = await mr.json();
+    if(!mr.ok) throw new Error(meta.error ? meta.error.message : 'אין גישה לקובץ');
+    driveDirty = false; clearTimeout(driveSaveTimer);
+    await readDataFile(doc.id, meta);
+    storeFileId(doc.id);
+    toast('מחובר לקובץ הנתונים המשותף'); render();
+  }catch(e){ toast('החיבור לקובץ נכשל: ' + e.message); }
 }
 function showFileNeededGate(){
   gateStatus('');
