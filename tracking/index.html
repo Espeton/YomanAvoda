@@ -1149,8 +1149,8 @@ function loadExternalScript(url, test){
 function openFilePicker(){
   return loadExternalScript('https://apis.google.com/js/api.js', ()=> window.gapi && gapi.load).then(()=> new Promise(resolve=>{
     gapi.load('picker', ()=>{
-      const shared = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setOwnedByMe(false).setIncludeFolders(false);
-      const mine = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setIncludeFolders(false);
+      const shared = new google.picker.DocsView(google.picker.ViewId.DOCS).setOwnedByMe(false).setIncludeFolders(false).setLabel('שותף איתי');
+      const mine = new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(false).setLabel('כל הקבצים');
       new google.picker.PickerBuilder().setOAuthToken(accessToken).setDeveloperKey(PICKER_API_KEY).setAppId(PICKER_APP_ID)
         .addView(shared).addView(mine).setLocale('iw').setTitle('בחר את קובץ הנתונים המשותף')
         .setCallback(d=>{ if(d.action==='picked') resolve(d.docs[0]); else if(d.action==='cancel') resolve(null); }).build().setVisible(true);
