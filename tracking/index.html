@@ -591,7 +591,8 @@ function settingsView(){
   const backupCard = `<div class="card"><h2>גיבוי</h2><div class="bar"><button class="btn secondary" id="bkExport">הורד גיבוי (JSON)</button>
       <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">טען גיבוי (החלפה מלאה)<input type="file" id="bkImport" accept="application/json" style="display:none;"></label></div>
     <div class="sum">הנתונים נשמרים אוטומטית ב-Google Drive. הגיבוי הוא עותק מקומי נוסף.</div></div>`;
-  return importCard + zoneCard + siteCard + conCard + assignCard + backupCard;
+  const shareCard = (isAdminEmail(currentEmail) && driveFileId) ? `<div class="card" id="shareCard">${sharingCardInner()}</div>` : '';
+  return importCard + zoneCard + siteCard + conCard + assignCard + shareCard + backupCard;
 }
 
 /* ---------- monthly report (level granularity) */
@@ -824,6 +825,7 @@ function wire(){
   const on = (sel, fn)=> document.querySelectorAll(sel).forEach(fn);
   on('[data-gosettings]', el=> el.onclick = e=>{ e.preventDefault(); tab = 'settings'; render(); });
   /* overview */
+  const shc = document.getElementById('shareCard'); if(shc) wireSharingCard(shc);
   const ob = document.getElementById('ovS'); if(ob) ob.onchange = ()=>{ ovS = ob.value; render(); };
   on('[data-ovsel]', el=> el.onclick = e=>{ e.preventDefault(); ovS = el.dataset.ovsel; render(); window.scrollTo(0, document.body.scrollHeight); });
   on('[data-go]', el=> el.onclick = ()=>{ const [s,t,p] = el.dataset.go.split('|'); curS = s; curT = t; curP = p; picked.clear(); tab = 'track'; render(); });
@@ -1152,6 +1154,46 @@ function openFilePicker(){
         .setCallback(d=>{ if(d.action==='picked') resolve(d.docs[0]); else if(d.action==='cancel') resolve(null); }).build().setVisible(true);
     });
   }));
+}
+/* ---- Sharing the data file (admin only, 26.10.2026): the app created the Drive file, so it may manage its permissions.
+   Lets the admin share it with another user right from the app (no hunting for the JSON file in Drive) and see who has access. */
+function sharingCardInner(){
+  return `<h2>שיתוף קובץ הנתונים עם משתמשים</h2>
+    <div class="sum" style="margin-bottom:8px;">הקובץ <b>${esc(DRIVE_FILE_NAME)}</b> נוצר על ידי האפליקציה ב-Google Drive שלך. כדי שמשתמש נוסף יראה את אותם נתונים: שתף איתו את הקובץ כאן (עורך), והוא נכנס לאפליקציה ובוחר את הקובץ פעם אחת (מסך "בחר את קובץ הנתונים המשותף").</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
+      <div><label>כתובת המייל של המשתמש</label><input type="email" id="sh_email" placeholder="name@gmail.com" style="min-width:250px;"></div>
+      <label style="display:flex; gap:6px; align-items:center; margin:0; font-weight:normal;"><input type="checkbox" id="sh_notify" checked style="width:auto;"> שלח הודעה במייל</label>
+      <button class="btn" id="sh_add">שתף כעורך</button>
+      <a class="btn secondary" href="https://drive.google.com/file/d/${driveFileId}/view" target="_blank" rel="noopener" style="text-decoration:none;">פתח את הקובץ ב-Drive</a>
+    </div>
+    <div id="sh_list" class="sum">טוען את רשימת הגישה...</div>`;
+}
+async function refreshSharingList(root){
+  const list = root.querySelector('#sh_list'); if(!list) return;
+  try{
+    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?fields=permissions(id,emailAddress,displayName,role,type)`);
+    const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה');
+    const roleHe = {owner:'בעלים', writer:'עורך', commenter:'מגיב', reader:'צופה'};
+    list.innerHTML = `<b>מי יכול לגשת לקובץ:</b>` + (j.permissions||[]).map(p=>`<div style="display:flex; gap:8px; align-items:center; padding:3px 0;"><span>${esc(p.emailAddress||p.displayName||p.type)}</span><span class="sum">${esc(roleHe[p.role]||p.role)}</span>${p.role==='owner'?'':`<button class="btn danger small" data-shrm="${esc(p.id)}">הסר גישה</button>`}</div>`).join('');
+    list.querySelectorAll('[data-shrm]').forEach(b=> b.onclick = async ()=>{
+      if(!confirm('להסיר את הגישה של המשתמש לקובץ?')) return;
+      const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${b.dataset.shrm}`, {method:'DELETE'});
+      toast(dr.ok || dr.status===204 ? 'הגישה הוסרה' : 'ההסרה נכשלה'); refreshSharingList(root);
+    });
+  }catch(e){ list.textContent = 'לא ניתן לטעון את רשימת הגישה: ' + e.message; }
+}
+function wireSharingCard(root){
+  root.querySelector('#sh_add').onclick = async ()=>{
+    const email = root.querySelector('#sh_email').value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(email)){ toast('נא להזין כתובת מייל תקינה'); return; }
+    const notify = root.querySelector('#sh_notify').checked;
+    try{
+      const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?sendNotificationEmail=${notify}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role:'writer', type:'user', emailAddress:email})});
+      const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה');
+      toast('הקובץ שותף עם ' + email); root.querySelector('#sh_email').value = ''; refreshSharingList(root);
+    }catch(e){ toast('השיתוף נכשל: ' + e.message); }
+  };
+  refreshSharingList(root);
 }
 function showFileNeededGate(){
   gateStatus('');
