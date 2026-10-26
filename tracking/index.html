@@ -448,9 +448,12 @@ function templatesView(){
 /* ---------- settings: import structure, basement zones, contractors, assignments, backup */
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
-    <div class="sum" style="margin-bottom:6px;">הדבק מ-Excel (בחר את העמודות והעתק): <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קרקע.</div>
-    <div class="bar" style="margin-bottom:8px;"><label class="btn" style="display:inline-block; cursor:pointer; margin:0;">📂 בחר קובץ Excel / CSV וייבא<input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;"></label>
-      <span class="sum">הגיליון הראשון בקובץ, עם העמודות בסדר שלמעלה (אפשר גם להדביק למטה).</span></div>
+    <div class="sum" style="margin-bottom:8px;">העמודות בקובץ, בסדר הזה: <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קרקע. נקרא הגיליון הראשון.</div>
+    <div id="impDrop" style="border:2px dashed var(--navy); border-radius:10px; padding:22px; text-align:center; cursor:pointer; background:#F8FAFD; margin-bottom:10px;">
+      <div style="font-size:30px; line-height:1.2;">📂</div><b>גרור לכאן את קובץ ה-Excel, או לחץ כאן לבחירת קובץ</b>
+      <div class="sum">xlsx / xls / csv - הייבוא מתבצע מיד אחרי הבחירה</div>
+      <input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;"></div>
+    <label>או: הדבק כאן מ-Excel (בחר את העמודות, העתק, והדבק) ואז לחץ "ייבא מבנה"</label>
     <textarea id="impText" placeholder="1&#9;0&#9;1&#9;A&#9;4&#9;111.71&#9;לא"></textarea>
     <div class="bar" style="margin-top:8px;"><label class="inl"><input type="checkbox" id="impLobby" checked> הוסף לובי בכל קומה</label>
       <label class="inl"><input type="checkbox" id="impPent" checked> דירה יחידה בקומה העליונה = פנטהאוז</label>
@@ -762,13 +765,32 @@ function wire(){
     const r = importApartments(rows, {lobby:document.getElementById('impLobby').checked, pent:document.getElementById('impPent').checked});
     saveAll(); toast(`יובאו ${r.nb} בניינים ו-${r.na} דירות`); render();
   };
-  const ig = document.getElementById('impGo'); if(ig) ig.onclick = ()=> runImport(document.getElementById('impText').value);
-  const ifl = document.getElementById('impFile'); if(ifl) ifl.onchange = async e=>{
-    const f = e.target.files[0]; e.target.value = ''; if(!f) return;
+  const importFile = async f=>{
+    if(!f) return;
     const res = document.getElementById('impResult'); res.textContent = 'קורא את הקובץ...';
     try{ const text = await readImportFile(f); document.getElementById('impText').value = text; runImport(text); }
     catch(err){ res.textContent = 'לא ניתן לקרוא את הקובץ: ' + (err && err.message || err); }
   };
+  const ifl = document.getElementById('impFile'); if(ifl) ifl.onchange = e=>{ const f = e.target.files[0]; e.target.value = ''; importFile(f); };
+  // "ייבא מבנה" with nothing pasted opens the file chooser instead of just complaining
+  const ig = document.getElementById('impGo'); if(ig) ig.onclick = ()=>{
+    const txt = document.getElementById('impText').value;
+    if(!txt.trim()){ ifl.click(); return; }
+    runImport(txt);
+  };
+  const drop = document.getElementById('impDrop');
+  if(drop){
+    drop.onclick = ()=> ifl.click();
+    ['dragenter','dragover'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.style.background = '#E3EEFB'; }));
+    ['dragleave','drop'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.style.background = '#F8FAFD'; }));
+    drop.addEventListener('drop', e=> importFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]));
+  }
+  // a file dropped straight onto the paste box is read too (instead of the browser just opening/pasting its path)
+  const imptxt = document.getElementById('impText');
+  if(imptxt){
+    imptxt.addEventListener('dragover', e=> e.preventDefault());
+    imptxt.addEventListener('drop', e=>{ const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if(f){ e.preventDefault(); importFile(f); } });
+  }
   const za = document.getElementById('zAdd'); if(za) za.onclick = ()=>{ const lv = document.getElementById('zLevels').value.split(',').map(cleanName).filter(Boolean); if(!lv.length){ toast('נא להגדיר מפלסים'); return; }
     addZone(document.getElementById('zName').value, document.getElementById('zUnder').value, lv); saveAll(); render(); };
   const zp = document.getElementById('zPreset'); if(zp) zp.onclick = ()=>{ const lv = ['רצפת מרתף','מפלס מרתף','תקרת מרתף'];
@@ -983,6 +1005,8 @@ async function loadOrCreateDriveFile(){
   }
   baseSnapshot = snapshotPayload();
 }
+// A file dropped anywhere outside a drop zone must not make the browser navigate to it (that would leave the app)
+['dragover','drop'].forEach(ev=> window.addEventListener(ev, e=>{ if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files')) e.preventDefault(); }));
 window.addEventListener('beforeprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.dataset.pd = b.style.display; b.style.display = 'none'; } });
 window.addEventListener('afterprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.style.display = b.dataset.pd || ''; } });
 </script>
