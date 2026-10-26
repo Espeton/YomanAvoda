@@ -544,6 +544,7 @@
     <div class="sub">כלי עזר אישי לתיעוד ומעקב ביצוע · מסונכרן דרך Google Drive <span id="driveSaveStatus" class="hint" style="display:inline;"></span></div>
   </div>
   <div id="presenceChip" class="presence-chip no-print" style="display:none;"></div>
+  <a id="adminUsersLink" class="btn secondary small no-print" style="display:none; text-decoration:none;" href="https://console.cloud.google.com/auth/audience?project=313815811753" target="_blank" rel="noopener" title="הוספה והסרה של משתמשים מורשים (Test users) ב-Google Cloud Console">👤 ניהול משתמשים</a>
   <button id="homeBtn" class="btn secondary small no-print" style="display:none;">⌂ חזרה לעמוד הראשי</button>
 </header>
 
@@ -6428,6 +6429,9 @@ async function presenceInit(){
     if(!u.sub) return;
     const email = (u.email||'').toLowerCase();
     presenceMe = { key:'u'+String(u.sub).replace(/\D/g,'').slice(0,20), name: u.name || (email.split('@')[0]) || 'משתמש', email, isAdmin: ADMIN_EMAILS.includes(email) };
+    // The "👤 ניהול משתמשים" link in the header is shown to the admin only (UI convenience - Google itself
+    // only lets the project owner open that page).
+    { const al = document.getElementById('adminUsersLink'); if(al) al.style.display = presenceMe.isAdmin ? '' : 'none'; }
     presenceBeat();
     clearInterval(presenceTimer);
     presenceTimer = setInterval(presenceBeat, PRESENCE_BEAT_MS);
