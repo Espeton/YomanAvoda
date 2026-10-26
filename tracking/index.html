@@ -187,7 +187,7 @@ function toast(msg){ const el = document.getElementById('toast'); el.textContent
    reminders[]      {id, key, title, baseDate, due, status:'open'|'done', snoozedTo, doneBy, doneOn}
    settings         {aptTypes:[...]}
    Progress is never overwritten: every update is a new entry; the cell shows the latest one. */
-let contractors = [], assignments = [], sites = [], trades = [], entries = [], reminders = [], settings = {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
+let contractors = [], crews = [], assignments = [], sites = [], trades = [], entries = [], reminders = [], settings = {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
 const it = (n,w)=>({n, w: w||1});
 /* Starter templates (examples - edit them in the "תבניות" tab) */
 function defaultTrades(){
@@ -212,10 +212,11 @@ function defaultTrades(){
 const SWAP_REASONS = ['לא עמד בהתחייבות','סיים את ההתקשרות','סולק מהאתר','אחר'];
 const BEGIN = '0001-01-01';
 
-function buildPayload(){ return {version:1, exportedAt:new Date().toISOString(), contractors, assignments, sites, trades, entries, reminders, settings}; }
+function buildPayload(){ return {version:1, exportedAt:new Date().toISOString(), contractors, crews, assignments, sites, trades, entries, reminders, settings}; }
 function applyData(d){
   d = d || {};
   contractors = Array.isArray(d.contractors) ? d.contractors : [];
+  crews = Array.isArray(d.crews) ? d.crews : [];
   assignments = Array.isArray(d.assignments) ? d.assignments : [];
   sites = Array.isArray(d.sites) ? d.sites : [];
   trades = Array.isArray(d.trades) ? d.trades : (d.trades===undefined ? defaultTrades() : []);
@@ -445,6 +446,112 @@ function templatesView(){
     <div class="note">לכל תחום מספר שלבים חופשי. בשלב "לפי מרכיב" יש ליבה משותפת לכל הדירות, ולכל סוג דירה אפשר להוסיף או להסיר פריטים. הסרת פריט לא מוחקת התקדמות שנרשמה - היא רק מפסיקה להיספר. התבניות שהוגדרו בהתחלה הן דוגמאות - ערוך אותן לפי העבודה בפועל.</div>`;
 }
 
+/* ---------- contractors + crews table (קבלן · צוות · בניינים) and sync from the daily log */
+const byNameHe = (a,b)=> String(a.name).localeCompare(String(b.name),'he',{numeric:true});
+function derivedSiteIds(contractorId){ const set = new Set(); assignments.forEach(a=>{ if(a.contractorId===contractorId && !a.to) set.add(a.siteId); }); return [...set]; }
+/* Buildings cell: the explicitly chosen buildings, plus (muted) buildings where the contractor is the performing contractor of some trade */
+function sitesCellHtml(explicitIds, contractorId){
+  const ex = sites.filter(s=>(explicitIds||[]).includes(s.id));
+  const extra = sites.filter(s=>!(explicitIds||[]).includes(s.id) && derivedSiteIds(contractorId).includes(s.id));
+  const chip = (s,muted)=> `<span class="typebadge ${muted?'':'t2'}" style="${muted?'background:#94A3B8;':''} margin:1px;" title="${muted?'מבצע בפועל תחום בבניין זה (מההקצאות)':'משויך'}">${esc(s.name)}</span>`;
+  const html = ex.map(s=>chip(s,false)).join(' ') + (extra.length ? ` <span class="sum">(מבצע גם: </span>${extra.map(s=>chip(s,true)).join(' ')}<span class="sum">)</span>` : '');
+  return html || '<span class="sum">—</span>';
+}
+function contractorsTableHtml(){
+  if(!contractors.length) return '<div class="sum">אין עדיין קבלנים.</div>';
+  const rows = [];
+  [...contractors].sort(byNameHe).forEach(c=>{
+    const cr = crews.filter(x=>x.contractorId===c.id).sort(byNameHe);
+    const used = assignments.some(a=>a.contractorId===c.id && !a.to);
+    const cCell = `<td class="l" rowspan="${Math.max(cr.length,1)}"><b>${esc(c.name)}</b>${c.active===false?' <span class="sum">(לא פעיל)</span>':''}${c.srcId?' <span title="מקושר לקבלן ביומן היומי">🔗</span>':''}
+      <div class="right" style="margin-top:4px;"><button class="btn secondary small" data-conedit="${c.id}">ערוך</button><button class="btn secondary small" data-addcrew="${c.id}">+ צוות</button>
+      <button class="btn secondary small" data-concactive="${c.id}">${c.active===false?'החזר לפעיל':'לא פעיל'}</button>
+      <button class="btn danger small" data-condel="${c.id}" ${used?'disabled title="מוקצה כרגע לתחום - קודם מחליפים אותו"':''}>הסר</button></div></td>`;
+    if(!cr.length) rows.push(`<tr>${cCell}<td class="sum">—</td><td class="l">${sitesCellHtml(c.siteIds,c.id)}</td></tr>`);
+    else cr.forEach((x,i)=> rows.push(`<tr>${i===0?cCell:''}<td class="l">${esc(x.name)}${x.active===false?' <span class="sum">(לא פעיל)</span>':''}${x.srcId?' <span title="מקושר לצוות ביומן היומי">🔗</span>':''}${x.description?`<div class="sum">${esc(x.description)}</div>`:''} <button class="btn secondary small" data-crewedit="${x.id}">ערוך</button></td><td class="l">${sitesCellHtml(x.siteIds,c.id)}</td></tr>`));
+  });
+  return `<div class="scroll"><table><thead><tr><th>קבלן</th><th>צוות</th><th>בניינים</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+}
+function sitesCheckboxesHtml(selected){
+  const part = (lbl,kind)=>{ const l = sites.filter(s=>s.kind===kind); return l.length ? `<div class="sum" style="margin-top:4px;">${lbl}</div><div style="display:flex; flex-wrap:wrap; gap:4px 14px;">${l.map(s=>`<label style="display:inline-flex; gap:5px; align-items:center; font-weight:normal; color:var(--text); margin:0;"><input type="checkbox" class="stchk" value="${s.id}" ${selected.includes(s.id)?'checked':''}> ${esc(s.name)}</label>`).join('')}</div>` : ''; };
+  return `<label>בניינים שבהם עובד</label><div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:8px;">${part('בניינים','building')}${part('מרתף','basement')}${sites.length?'':'<div class="sum">עדיין לא הוגדרו בניינים.</div>'}</div>`;
+}
+const checkedSites = ()=> [...document.querySelectorAll('#editorBox .stchk:checked')].map(x=>x.value);
+function openContractorModal(id){
+  const c = contractors.find(x=>x.id===id); if(!c) return; const hasCrews = crews.some(x=>x.contractorId===id);
+  modal(`<h2>עריכת קבלן</h2><div class="sub">${c.srcId?'מקושר לקבלן ביומן היומי (סנכרון מעדכן שם וסטטוס פעיל)':'קבלן שהוגדר ידנית'}</div>
+    <div class="f"><label>שם הקבלן</label><input type="text" id="mcName" value="${esc(c.name)}"></div>
+    ${hasCrews ? '<div class="note" style="margin-top:0;">לקבלן יש צוותים - הבניינים נקבעים לכל צוות בנפרד (כפתור "ערוך" ליד הצוות).</div>' : sitesCheckboxesHtml(c.siteIds||[])}
+    <div class="right" style="margin-top:12px;"><button class="btn" id="mcSave">שמור</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('mcSave').onclick = ()=>{ const n = cleanName(document.getElementById('mcName').value); if(!n){ toast('נא למלא שם'); return; }
+    if(contractors.some(x=>x.id!==id && x.name===n)){ toast('קבלן בשם זה כבר קיים'); return; }
+    c.name = n; if(!hasCrews) c.siteIds = checkedSites(); saveAll(); closeModal(); render(); };
+}
+function openCrewModal(contractorId, crewId){
+  const c = contractors.find(x=>x.id===contractorId), cr = crewId ? crews.find(x=>x.id===crewId) : null; if(!c) return;
+  modal(`<h2>${cr?'עריכת צוות':'צוות חדש'}</h2><div class="sub">קבלן: <b>${esc(c.name)}</b>${cr&&cr.srcId?' · מקושר לצוות ביומן היומי':''}</div>
+    <div class="f"><label>שם הצוות</label><input type="text" id="mcName" value="${esc(cr?cr.name:'')}"></div>
+    <div class="f"><label>תיאור (לא חובה)</label><input type="text" id="mcDesc" value="${esc(cr?cr.description||'':'')}"></div>
+    ${cr?`<label class="inl" style="display:flex; gap:6px; align-items:center; font-weight:normal; color:var(--text);"><input type="checkbox" id="mcActive" ${cr.active!==false?'checked':''}> צוות פעיל</label>`:''}
+    ${sitesCheckboxesHtml(cr?cr.siteIds||[]:[])}
+    <div class="right" style="margin-top:12px;"><button class="btn" id="mcSave">שמור</button>${cr?'<button class="btn danger" id="mcDel">מחק צוות</button>':''}<button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('mcSave').onclick = ()=>{ const n = cleanName(document.getElementById('mcName').value); if(!n){ toast('נא למלא שם'); return; }
+    if(crews.some(x=>x.id!==crewId && x.contractorId===contractorId && x.name===n)){ toast('צוות בשם זה כבר קיים אצל הקבלן'); return; }
+    const data = {name:n, description:cleanName(document.getElementById('mcDesc').value), siteIds:checkedSites()};
+    if(cr){ Object.assign(cr, data, {active:document.getElementById('mcActive').checked}); } else { crews.push({id:uid('cw'), contractorId, active:true, ...data}); }
+    saveAll(); closeModal(); render(); };
+  const del = document.getElementById('mcDel'); if(del) del.onclick = ()=>{ if(confirm(`למחוק את הצוות "${cr.name}"?`)){ crews = crews.filter(x=>x.id!==cr.id); saveAll(); closeModal(); render(); } };
+}
+/* Daily-log sync: contractors and crews of the daily-log app (its own Drive file) are added here; linked ones are matched by
+   their original id (srcId) - or, the first time, by identical name - and get their name / active flag (crews: name / description)
+   updated. Nothing is ever deleted, and buildings / assignments set here are never touched. */
+async function fetchDailyLogData(){
+  const q = encodeURIComponent(`name='יומן-עבודה-נתונים.json' and trashed=false`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
+  const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה בחיפוש קובץ היומן');
+  if(!j.files || !j.files.length) throw new Error('קובץ היומן לא נמצא ב-Drive (ייתכן שלאפליקציה אין גישה אליו). אפשר לייבא מקובץ גיבוי של היומן.');
+  const c = await driveFetch(`https://www.googleapis.com/drive/v3/files/${j.files[0].id}?alt=media`);
+  if(!c.ok) throw new Error('שגיאה בקריאת קובץ היומן');
+  return await c.json();
+}
+function diffDailyLog(dl){
+  const dc = Array.isArray(dl.contractors) ? dl.contractors : [], dcr = Array.isArray(dl.crews) ? dl.crews : [];
+  const addC = [], updC = [], addCr = [], updCr = [], mapC = new Map();
+  dc.forEach(src=>{
+    const name = cleanName(src.name); if(!name || !src.id) return;
+    const act = src.active !== false;
+    const loc = contractors.find(c=>c.srcId===src.id) || contractors.find(c=>!c.srcId && c.name===name);
+    if(loc){ mapC.set(src.id, loc); if(loc.name!==name || (loc.active!==false)!==act || loc.srcId!==src.id) updC.push({loc, name, active:act, srcId:src.id}); }
+    else { const o = {id:uid('c'), name, active:act, srcId:src.id, siteIds:[]}; addC.push(o); mapC.set(src.id, o); }
+  });
+  dcr.forEach(src=>{
+    const owner = mapC.get(src.contractorId), name = cleanName(src.name); if(!owner || !name || !src.id) return;
+    const desc = cleanName(src.description||'');
+    const loc = crews.find(x=>x.srcId===src.id) || crews.find(x=>!x.srcId && x.contractorId===owner.id && x.name===name);
+    if(loc){ if(loc.name!==name || (loc.description||'')!==desc || loc.srcId!==src.id || loc.contractorId!==owner.id) updCr.push({loc, name, description:desc, srcId:src.id, contractorId:owner.id}); }
+    else addCr.push({id:uid('cw'), contractorId:owner.id, name, description:desc, active:true, srcId:src.id, siteIds:[]});
+  });
+  return {addC, updC, addCr, updCr};
+}
+function openSyncPreview(dl, sourceLabel){
+  const d = diffDailyLog(dl), total = d.addC.length + d.updC.length + d.addCr.length + d.updCr.length;
+  const list = (title, arr, f)=> arr.length ? `<div class="sum" style="margin-top:8px;"><b>${title} (${arr.length}):</b> ${arr.slice(0,25).map(x=>esc(f(x))).join(' · ')}${arr.length>25?' ...':''}</div>` : '';
+  modal(`<h2>סנכרון קבלנים וצוותים מהיומן היומי</h2><div class="sub">${esc(sourceLabel)}</div>
+    ${total ? `${list('קבלנים חדשים',d.addC,x=>x.name)}${list('צוותים חדשים',d.addCr,x=>`${x.name} (${(d.addC.find(c=>c.id===x.contractorId)||contractors.find(c=>c.id===x.contractorId)||{}).name||''})`)}${list('קבלנים שיעודכנו (שם/סטטוס/קישור)',d.updC,x=>x.name)}${list('צוותים שיעודכנו',d.updCr,x=>x.name)}
+      <div class="note">לא נמחק דבר, והבניינים וההקצאות שהוגדרו כאן לא משתנים. שם וסטטוס פעיל של קבלן מקושר נלקחים מהיומן.</div>`
+      : '<div class="empty">הכול כבר מסונכרן - אין קבלנים או צוותים חדשים ביומן.</div>'}
+    <div class="right" style="margin-top:12px;">${total?'<button class="btn" id="syApply">בצע סנכרון</button>':''}<button class="btn secondary" id="edCancel">${total?'ביטול':'סגור'}</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  const ap = document.getElementById('syApply'); if(ap) ap.onclick = ()=>{
+    d.addC.forEach(c=> contractors.push(c)); d.addCr.forEach(c=> crews.push(c));
+    d.updC.forEach(u=>{ u.loc.name = u.name; u.loc.active = u.active; u.loc.srcId = u.srcId; });
+    d.updCr.forEach(u=>{ u.loc.name = u.name; u.loc.description = u.description; u.loc.srcId = u.srcId; u.loc.contractorId = u.contractorId; });
+    saveAll(); closeModal(); render(); toast(`סונכרנו: ${d.addC.length} קבלנים ו-${d.addCr.length} צוותים חדשים, ${d.updC.length+d.updCr.length} עודכנו`);
+  };
+}
+
 /* ---------- settings: import structure, basement zones, contractors, assignments, backup */
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
@@ -468,9 +575,11 @@ function settingsView(){
       <button class="btn secondary small" id="zPreset" title="מוסיף שלושה חלקים לפי הגדרת הפרויקט">3 חלקי המרתף של פסגת רמות</button></div></div>`;
   const siteCard = `<div class="card"><h2>מבנים ומרחבים קיימים</h2>
     ${sites.length===0?'<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>':`<table><thead><tr><th>שם</th><th>סוג</th><th>מפלסים</th><th>דירות</th><th></th></tr></thead><tbody>${sites.map(s=>`<tr><td class="l">${esc(s.name)}${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.kind==='building'?'בניין':'מרתף'}</td><td>${s.levels.length}</td><td>${s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0)}</td><td><button class="btn danger small" data-delsite="${s.id}">מחק</button></td></tr>`).join('')}</tbody></table>`}</div>`;
-  const conCard = `<div class="card"><h2>קבלנים</h2>
-    <div class="sum" style="margin-bottom:6px;">רשימת הקבלנים של המעקב (נפרדת מרשימת הקבלנים ביומן היומי). אפשר להדביק כמה שמות - שם בכל שורה.</div>
-    ${contractors.map(c=>`<div class="wrow"><span class="nm">${esc(c.name)}${c.active===false?' <span class="sum">(לא פעיל)</span>':''}</span><span class="sum">מוקצה ל-${assignments.filter(a=>a.contractorId===c.id && !a.to).length} תחומים/בניינים</span><button class="btn secondary small" data-concactive="${c.id}">${c.active===false?'החזר לפעיל':'סמן כלא פעיל'}</button><button class="btn danger small" data-condel="${c.id}" ${assignments.some(a=>a.contractorId===c.id && !a.to)?'disabled title="מוקצה כרגע - קודם מחליפים אותו"':''}>הסר</button></div>`).join('')||'<div class="sum">אין עדיין קבלנים.</div>'}
+  const conCard = `<div class="card"><h2>קבלנים וצוותים</h2>
+    <div class="sum" style="margin-bottom:6px;">טבלת הקבלנים והצוותים של המעקב, והבניינים שבהם הם עובדים. אפשר להוסיף ידנית, או לייבא ולסנכרן קבלנים וצוותים מהיומן היומי.</div>
+    <div class="bar"><button class="btn" id="syncLog">🔄 סנכרן קבלנים וצוותים מהיומן היומי</button>
+      <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">ייבא מקובץ גיבוי של היומן<input type="file" id="syncFile" accept="application/json,.json" style="display:none;"></label></div>
+    ${contractorsTableHtml()}
     <textarea id="newCons" placeholder="שם קבלן בכל שורה" style="min-height:70px; margin-top:8px;"></textarea>
     <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="addCons">+ הוסף קבלנים</button></div></div>`;
   const assignCard = `<div class="card"><h2>הקצאת קבלן מבצע לתחום</h2>
@@ -798,8 +907,21 @@ function wire(){
   on('[data-delsite]', el=> el.onclick = ()=>{ const s = siteById(el.dataset.delsite); if(!s) return; const n = entries.filter(e=>e.key.split('|')[0]===s.id).length;
     if(confirm(`למחוק את "${s.name}"?${n?`\nנרשמו בו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו.`:''}`)){ sites = sites.filter(x=>x.id!==s.id); assignments = assignments.filter(a=>a.siteId!==s.id); saveAll(); render(); } });
   const ac = document.getElementById('addCons'); if(ac) ac.onclick = ()=>{ const names = document.getElementById('newCons').value.split(/\r?\n/).map(cleanName).filter(Boolean); let n = 0;
-    names.forEach(nm=>{ if(!contractors.some(c=>c.name===nm)){ contractors.push({id:uid('c'), name:nm, active:true}); n++; } }); if(n){ saveAll(); toast(`נוספו ${n} קבלנים`); render(); } };
-  on('[data-condel]', el=> el.onclick = ()=>{ contractors = contractors.filter(c=>c.id!==el.dataset.condel); saveAll(); render(); });
+    names.forEach(nm=>{ if(!contractors.some(c=>c.name===nm)){ contractors.push({id:uid('c'), name:nm, active:true, siteIds:[]}); n++; } }); if(n){ saveAll(); toast(`נוספו ${n} קבלנים`); render(); } };
+  on('[data-condel]', el=> el.onclick = ()=>{ const c = contractors.find(x=>x.id===el.dataset.condel); if(!c) return; const n = crews.filter(x=>x.contractorId===c.id).length;
+    if(confirm(`להסיר את הקבלן "${c.name}"?${n?`\n(כולל ${n} צוותים)`:''}`)){ contractors = contractors.filter(x=>x.id!==c.id); crews = crews.filter(x=>x.contractorId!==c.id); saveAll(); render(); } });
+  on('[data-conedit]', el=> el.onclick = ()=> openContractorModal(el.dataset.conedit));
+  on('[data-addcrew]', el=> el.onclick = ()=> openCrewModal(el.dataset.addcrew, null));
+  on('[data-crewedit]', el=> el.onclick = ()=>{ const cr = crews.find(x=>x.id===el.dataset.crewedit); if(cr) openCrewModal(cr.contractorId, cr.id); });
+  const sl = document.getElementById('syncLog'); if(sl) sl.onclick = async ()=>{
+    sl.disabled = true; sl.textContent = 'קורא את קובץ היומן מ-Drive...';
+    try{ openSyncPreview(await fetchDailyLogData(), 'מקור: קובץ היומן היומי ב-Google Drive'); }
+    catch(err){ toast(String(err && err.message || err)); }
+    finally{ sl.disabled = false; sl.textContent = '🔄 סנכרן קבלנים וצוותים מהיומן היומי'; }
+  };
+  const sf = document.getElementById('syncFile'); if(sf) sf.onchange = e=>{ const f = e.target.files[0]; e.target.value = ''; if(!f) return; const rd = new FileReader();
+    rd.onload = ()=>{ try{ const d = JSON.parse(rd.result); if(!Array.isArray(d.contractors)) throw new Error('x'); openSyncPreview(d, 'מקור: קובץ גיבוי '+f.name); }catch(err){ toast('הקובץ אינו גיבוי תקין של היומן היומי'); } };
+    rd.readAsText(f); };
   on('[data-concactive]', el=> el.onclick = ()=>{ const c = contractors.find(x=>x.id===el.dataset.concactive); if(c){ c.active = c.active===false; saveAll(); render(); } });
   const ag = document.getElementById('asGo'); if(ag) ag.onclick = ()=>{ const tid = document.getElementById('asTrade').value, cid = document.getElementById('asCon').value, scope = document.getElementById('asScope').value;
     if(!cid){ toast('נא לבחור קבלן'); return; } let n = 0;
@@ -868,9 +990,9 @@ function mergeRows(baseArr, localArr, remoteArr){
     const m = mergeRecord(b,l,r); merged.push(m.record); conflicts += m.conflicts; });
   return {merged, conflicts};
 }
-const COLLECTIONS = ['contractors','assignments','sites','trades','entries','reminders'];
-const getColl = n => ({contractors, assignments, sites, trades, entries, reminders})[n];
-function setColl(n,v){ if(n==='contractors') contractors=v; else if(n==='assignments') assignments=v; else if(n==='sites') sites=v; else if(n==='trades') trades=v; else if(n==='entries') entries=v; else if(n==='reminders') reminders=v; }
+const COLLECTIONS = ['contractors','crews','assignments','sites','trades','entries','reminders'];
+const getColl = n => ({contractors, crews, assignments, sites, trades, entries, reminders})[n];
+function setColl(n,v){ if(n==='contractors') contractors=v; else if(n==='crews') crews=v; else if(n==='assignments') assignments=v; else if(n==='sites') sites=v; else if(n==='trades') trades=v; else if(n==='entries') entries=v; else if(n==='reminders') reminders=v; }
 
 async function driveSaveNow(){
   if(driveSaveInFlight){ driveSavePending = true; return; }
