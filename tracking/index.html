@@ -449,6 +449,8 @@ function templatesView(){
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
     <div class="sum" style="margin-bottom:6px;">הדבק מ-Excel (בחר את העמודות והעתק): <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קרקע.</div>
+    <div class="bar" style="margin-bottom:8px;"><label class="btn" style="display:inline-block; cursor:pointer; margin:0;">📂 בחר קובץ Excel / CSV וייבא<input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;"></label>
+      <span class="sum">הגיליון הראשון בקובץ, עם העמודות בסדר שלמעלה (אפשר גם להדביק למטה).</span></div>
     <textarea id="impText" placeholder="1&#9;0&#9;1&#9;A&#9;4&#9;111.71&#9;לא"></textarea>
     <div class="bar" style="margin-top:8px;"><label class="inl"><input type="checkbox" id="impLobby" checked> הוסף לובי בכל קומה</label>
       <label class="inl"><input type="checkbox" id="impPent" checked> דירה יחידה בקומה העליונה = פנטהאוז</label>
@@ -645,13 +647,34 @@ function parseAptTable(text){
   const rows = [];
   String(text||'').split(/\r?\n/).forEach(line=>{
     if(!line.trim()) return;
-    const c = line.split('\t').map(x=>x.trim());
+    // tab (pasted from Excel) - or, for a CSV file, comma / semicolon; as a last resort two or more spaces
+    const sep = line.includes('\t') ? '\t' : (line.includes(';') ? ';' : (line.includes(',') ? ',' : /\s{2,}/));
+    const c = line.split(sep).map(x=>x.trim().replace(/^"|"$/g,''));
     if(c.length<3) return;
     const b = parseInt(c[0],10), f = parseInt(c[1],10), n = parseInt(c[2],10);
     if(isNaN(b)||isNaN(f)||isNaN(n)) return;
     rows.push({b, f, n, lay:cleanName(c[3]||''), rooms:cleanName(c[4]||''), area:cleanName(c[5]||''), pt:/^(כן|yes|true|1)$/i.test(c[6]||'')});
   });
   return rows;
+}
+/* Reads an uploaded file into tab-separated text. .xlsx/.xls go through SheetJS (loaded from cdnjs only when needed;
+   first sheet), anything else (.csv/.tsv/.txt) is read as text. */
+const SHEETJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function loadScriptOnce(url){
+  return new Promise((resolve,reject)=>{
+    if(window.XLSX) return resolve();
+    const s = document.createElement('script'); s.src = url; s.onload = ()=> resolve(); s.onerror = ()=> reject(new Error('טעינת רכיב קריאת Excel נכשלה - בדוק חיבור לאינטרנט, או שמור את הקובץ כ-CSV'));
+    document.head.appendChild(s);
+  });
+}
+async function readImportFile(file){
+  if(/\.(xlsx|xls)$/i.test(file.name)){
+    await loadScriptOnce(SHEETJS_URL);
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
+    return rows.map(r=> r.map(x=> String(x).trim()).join('\t')).join('\n');
+  }
+  return await file.text();
 }
 function importApartments(rows, opts){
   const byB = {};
@@ -733,11 +756,18 @@ function wire(){
   on('[data-deltype]', el=> el.onclick = ()=>{ settings.aptTypes.splice(+el.dataset.deltype,1); saveAll(); render(); });
   const aty = document.getElementById('addType'); if(aty) aty.onclick = ()=>{ const n = cleanName(document.getElementById('newType').value); if(n && !settings.aptTypes.includes(n)){ settings.aptTypes.push(n); saveAll(); render(); } };
   /* settings */
-  const ig = document.getElementById('impGo'); if(ig) ig.onclick = ()=>{
-    const rows = parseAptTable(document.getElementById('impText').value);
-    if(!rows.length){ document.getElementById('impResult').textContent = 'לא זוהו שורות. ודא שהעתקת את העמודות בסדר הנכון (בניין, קומה, מספר דירה...).'; return; }
+  const runImport = text=>{
+    const rows = parseAptTable(text);
+    if(!rows.length){ document.getElementById('impResult').textContent = 'לא זוהו שורות. ודא שהעמודות בסדר הנכון: בניין, קומה, מספר דירה (מספרים) ואחריהן טיפוס, חדרים, שטח, מחיר מטרה.'; return; }
     const r = importApartments(rows, {lobby:document.getElementById('impLobby').checked, pent:document.getElementById('impPent').checked});
     saveAll(); toast(`יובאו ${r.nb} בניינים ו-${r.na} דירות`); render();
+  };
+  const ig = document.getElementById('impGo'); if(ig) ig.onclick = ()=> runImport(document.getElementById('impText').value);
+  const ifl = document.getElementById('impFile'); if(ifl) ifl.onchange = async e=>{
+    const f = e.target.files[0]; e.target.value = ''; if(!f) return;
+    const res = document.getElementById('impResult'); res.textContent = 'קורא את הקובץ...';
+    try{ const text = await readImportFile(f); document.getElementById('impText').value = text; runImport(text); }
+    catch(err){ res.textContent = 'לא ניתן לקרוא את הקובץ: ' + (err && err.message || err); }
   };
   const za = document.getElementById('zAdd'); if(za) za.onclick = ()=>{ const lv = document.getElementById('zLevels').value.split(',').map(cleanName).filter(Boolean); if(!lv.length){ toast('נא להגדיר מפלסים'); return; }
     addZone(document.getElementById('zName').value, document.getElementById('zUnder').value, lv); saveAll(); render(); };
