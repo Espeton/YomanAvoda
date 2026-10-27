@@ -4268,7 +4268,9 @@ function buildToolboxMatrixData(projectId, month, filterContractorId, filterCrew
   contractorsWithCrews.forEach(c=>{
     const allCrews = crewsForContractor(c.id);
     const crewIdSet = new Set(allCrews.map(cr=>cr.id));
-    const crewList = filterCrewId ? allCrews.filter(cr=>cr.id===filterCrewId) : allCrews;
+    // filterCrewId: one crew id, an array of crew ids (several crews of the contractor, 27.10.2026), or empty = all crews
+    const crewFilter = Array.isArray(filterCrewId) ? filterCrewId : (filterCrewId ? [filterCrewId] : []);
+    const crewList = crewFilter.length ? allCrews.filter(cr=>crewFilter.includes(cr.id)) : allCrews;
     if(crewList.length===0) return;
     /* An inactive worker still shows up for a month where he was actually marked present at
        least once (so days already worked before he left stay visible and counted) - per user
@@ -5950,7 +5952,7 @@ function renderToolboxMatrixReport(main){
       <div><label>פרויקט *</label><select id="r8_project" class="searchable"><option value="">בחר פרויקט...</option>${projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
       <div><label>חודש *</label><input type="month" id="r8_month" value="${todayStr().slice(0,7)}"></div>
       <div><label>קבלן משנה</label><select id="r8_contractor" class="searchable"><option value="">כל הקבלנים</option>${printableContractors.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
-      <div><label>קבוצה</label><select id="r8_crew" class="searchable"><option value="">כל הקבוצות</option></select></div>
+      <div style="flex:2 1 280px;"><label>קבוצות (אפשר לבחור כמה)</label><div id="r8_crews" style="display:flex; flex-wrap:wrap; gap:4px 14px; min-height:36px; align-items:center;"><span class="hint">בחר קבלן כדי לבחור קבוצות · בלי סימון = כל הקבוצות</span></div></div>
     </div>
     <div class="row-actions no-print">
       <button class="btn" id="r8_go">הפק דוח</button>
@@ -5962,16 +5964,20 @@ function renderToolboxMatrixReport(main){
       <div id="r8_table" style="margin-top:8px;"></div>
     </div>
     `}
-    <div class="note no-print" style="margin-top:12px;">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או קבוצה ספציפיים.</div>
+    <div class="note no-print" style="margin-top:12px;">תצוגה לעיון/הדפסה של מטריצת הנוכחות מטאב "טולבוקס" - לפי פרויקט וחודש, עם צמצום אופציונלי לקבלן ו/או לכמה מקבוצותיו (למשל לין וואן).</div>
   `;
   main.appendChild(card8);
   if(printableContractors.length===0) return;
 
   const r8ContractorEl = document.getElementById('r8_contractor');
-  const r8CrewEl = document.getElementById('r8_crew');
+  const r8CrewsEl = document.getElementById('r8_crews');
+  // Several crews of the chosen contractor can be ticked (27.10.2026); nothing ticked = all of its crews
+  const r8CheckedCrews = ()=> Array.from(r8CrewsEl.querySelectorAll('input:checked')).map(x=>x.value);
   r8ContractorEl.onchange = ()=>{
     const crewOpts = r8ContractorEl.value ? sortCrewsAlpha(crewsForContractor(r8ContractorEl.value)) : [];
-    r8CrewEl.innerHTML = '<option value="">כל הקבוצות</option>' + crewOpts.map(cr=>`<option value="${cr.id}">${esc(cr.name)}</option>`).join('');
+    r8CrewsEl.innerHTML = crewOpts.length
+      ? crewOpts.map(cr=>`<label style="display:inline-flex; gap:5px; align-items:center; margin:0; font-weight:normal; color:var(--text);"><input type="checkbox" value="${cr.id}" style="width:auto;"> ${esc(cr.name)}</label>`).join('')
+      : '<span class="hint">בחר קבלן כדי לבחור קבוצות · בלי סימון = כל הקבוצות</span>';
   };
   document.getElementById('r8_go').onclick = buildToolboxMatrixReportTable;
   document.getElementById('r8_pdf').onclick = ()=> window.print();
@@ -5980,7 +5986,7 @@ function renderToolboxMatrixReport(main){
     const projectId = document.getElementById('r8_project').value;
     const month = document.getElementById('r8_month').value;
     const contractorId = r8ContractorEl.value;
-    const crewId = r8CrewEl.value;
+    const crewIds = r8CheckedCrews();
     const titleBox = document.getElementById('r8_title');
     const box = document.getElementById('r8_table');
     if(!projectId || !month){ box.innerHTML = '<div class="empty">יש לבחור פרויקט וחודש כדי להפיק את הדוח.</div>'; titleBox.textContent=''; return; }
@@ -5988,10 +5994,10 @@ function renderToolboxMatrixReport(main){
     const proj = projects.find(p=>p.id===projectId);
     const titleParts = [`דוח מטריצת טולבוקס: ${proj?proj.name:''}`, month];
     if(contractorId){ const c = contractors.find(x=>x.id===contractorId); if(c) titleParts.push(c.name); }
-    if(crewId){ const cr = crews.find(x=>x.id===crewId); if(cr) titleParts.push(cr.name); }
+    if(crewIds.length){ titleParts.push(crewIds.map(id=>(crews.find(x=>x.id===id)||{}).name).filter(Boolean).join(', ')); }
     titleBox.textContent = titleParts.join(' - ');
 
-    const {days, presenceByDay, contractorBlocks} = buildToolboxMatrixData(projectId, month, contractorId, crewId);
+    const {days, presenceByDay, contractorBlocks} = buildToolboxMatrixData(projectId, month, contractorId, crewIds);
     if(contractorBlocks.length===0){ box.innerHTML = '<div class="empty">אין נתוני נוכחות תואמים לסינון שנבחר.</div>'; return; }
     const saturdays = new Set(days.filter(d=> new Date(month+'-'+String(d).padStart(2,'0')+'T00:00:00').getDay()===6));
 
