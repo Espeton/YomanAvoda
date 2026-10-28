@@ -635,6 +635,7 @@ function runMigrations(){
      the moment the two sides added/removed rows in different orders). */
   normalizeLogsForMerge(logs);
   dedupeToolboxRecords();
+  dedupeLogs();
 }
 /* 21.10.2026: two browsers that each ticked the first box of the same project+date created two separate
    toolbox records (random ids), and every reader/writer then used only the FIRST one - so the other
@@ -653,6 +654,48 @@ function dedupeToolboxRecords(){
   if(out.length !== toolboxRecords.length) toolboxRecords = out;
 }
 const toolboxRecordId = (projectId, date)=> `tbx_${projectId}_${date}`;
+/* 28.10.2026: two people (or two browsers) who each started a log for the same project + sub-project + date create two
+   live logs with different ids - the merge keeps both, every screen then shows only the FIRST one it finds, so one person
+   "sees an empty log" while the other sees his. Collapses such duplicates into one: the log with the most content is kept
+   (its id/serial), the others' rows (by row id) and texts are folded into it, and the emptied duplicates are removed.
+   Returns a Map removedLogId -> keptLogId. */
+function logContentScore(l){
+  let n = 0;
+  LOG_ROW_FIELDS.forEach(f=>{ if(Array.isArray(l[f])) n += l[f].length; });
+  ['notes','companyEmployees'].forEach(f=>{ if(l[f] && String(l[f]).trim()) n++; });
+  if(l.weather) n++;
+  return n;
+}
+function dedupeLogs(){
+  const groups = new Map();
+  logs.forEach(l=>{
+    if(!l || l.deleted || !l.projectId || !l.date) return;
+    const k = [l.projectId, l.subProjectId||'', l.date].join('|');
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(l);
+  });
+  const removed = new Map();
+  groups.forEach(g=>{
+    if(g.length < 2) return;
+    g.sort((a,b)=> logContentScore(b)-logContentScore(a) || ((a.serialNumber||1e9)-(b.serialNumber||1e9)));
+    const primary = g[0];
+    g.slice(1).forEach(o=>{
+      LOG_ROW_FIELDS.forEach(f=>{
+        if(!Array.isArray(o[f]) || !o[f].length) return;
+        if(!Array.isArray(primary[f])) primary[f] = [];
+        o[f].forEach(row=>{ if(!row || !row.id || !primary[f].some(r=>r.id===row.id)) primary[f].push(row); });
+      });
+      ['notes','companyEmployees'].forEach(f=>{
+        const a = (primary[f]||'').trim(), b = (o[f]||'').trim();
+        if(b && !a) primary[f] = o[f]; else if(a && b && a!==b) primary[f] = primary[f] + '\n---\n' + o[f];
+      });
+      ['weather','siteManagerAtDate','signedBy','signedAt'].forEach(f=>{ if(!primary[f] && o[f]) primary[f] = o[f]; });
+      removed.set(o.id, primary.id);
+    });
+  });
+  if(removed.size) logs = logs.filter(l=>!removed.has(l.id));
+  return removed;
+}
 /* Makes a logs array safe for the merge engine: every nested row list really is an array (older
    saved logs can still hold a legacy plain string in exceptions/planning, or lack a list
    entirely - mergeRowsById crashed on those with "filter is not a function", 04.10.2026), and
@@ -930,6 +973,11 @@ async function driveSaveNow(){
       dedupeToolboxRecords();
       const {merged:mergedLogs, conflicts:logConflicts} = mergeCollection('logs', base.logs, logs, remote.logs);
       logs = adoptIdentity(logs, mergedLogs);
+      const mergedDupLogs = dedupeLogs();
+      if(mergedDupLogs.size){
+        if(draft && mergedDupLogs.has(draft.id)){ const keep = logs.find(l=>l.id===mergedDupLogs.get(draft.id)); if(keep) draft = JSON.parse(JSON.stringify(keep)); }
+        toast(`אוחדו ${mergedDupLogs.size} יומנים כפולים לאותו תאריך (התוכן של כולם נשמר ביומן אחד)`);
+      }
       company = mergeRecord(base.company, company, remote.company, []).record;
 
       activeLogMergeConflicts = null;
@@ -2835,8 +2883,10 @@ const EQUIPMENT_SUGGESTIONS =['מנוף','מחפרון','מלגזה','בטונד
 function updateSiteManagerForDraft(){
   draft.siteManagerAtDate = draft.projectId ? managerAtDate(draft.projectId, draft.date) : '';
 }
+/* A log marked "מבוטל" (soft-deleted) does NOT block its date (28.10.2026): before, an empty duplicate that was cancelled still
+   blocked the date, so the real log could never be moved back onto it. */
 function findConflictingLog(projectId, subProjectId, date, excludeId){
-  return logs.find(l=> l.id!==excludeId && l.projectId===projectId && (l.subProjectId||'')===(subProjectId||'') && l.date===date);
+  return logs.find(l=> l.id!==excludeId && !l.deleted && l.projectId===projectId && (l.subProjectId||'')===(subProjectId||'') && l.date===date);
 }
 function draftHasContent(){
   return !!((draft.attendance&&draft.attendance.length) || (draft.equipment&&draft.equipment.length) ||
@@ -2879,27 +2929,34 @@ function setAutosaveStatus(text){
   const el = document.getElementById('autosaveStatus');
   if(el) el.textContent = text;
 }
+/* 28.10.2026: renderDailyLog() used to just CANCEL a pending autosave (clearTimeout), so anything typed in the last
+   <900ms before a re-render (e.g. a date/project change) stayed only in the open form and was lost if that form was then
+   replaced. Now the pending save is carried out immediately (runAutosave) instead of being dropped. */
+let pendingAutosaveDraft = null;
+function runAutosave(targetDraft){
+  if(!targetDraft.projectId || !targetDraft.date){ setAutosaveStatus('לא נשמר עדיין (נא לבחור פרויקט ותאריך)'); return; }
+  if(findConflictingLog(targetDraft.projectId, targetDraft.subProjectId, targetDraft.date, targetDraft.id)){
+    setAutosaveStatus('לא ניתן לשמור אוטומטית - כבר קיים יומן לתאריך ולפרויקט הזה');
+    return;
+  }
+  const idx = logs.findIndex(l=>l.id===targetDraft.id);
+  if(idx>=0) logs[idx] = targetDraft; else { assignSerialIfNeeded(targetDraft); logs.push(targetDraft); }
+  saveAll();
+  if(draft === targetDraft){
+    setAutosaveStatus('נשמר אוטומטית · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
+  }
+}
 function scheduleAutosave(){
   if(!draft) return;
   const targetDraft = draft; // capture reference so a later tab/draft switch can't hijack this save
   clearTimeout(autosaveTimer);
+  pendingAutosaveDraft = targetDraft;
   setAutosaveStatus('שומר...');
-  autosaveTimer = setTimeout(()=>{
-    if(!targetDraft.projectId || !targetDraft.date){ setAutosaveStatus('לא נשמר עדיין (נא לבחור פרויקט ותאריך)'); return; }
-    if(findConflictingLog(targetDraft.projectId, targetDraft.subProjectId, targetDraft.date, targetDraft.id)){
-      setAutosaveStatus('לא ניתן לשמור אוטומטית - כבר קיים יומן לתאריך ולפרויקט הזה');
-      return;
-    }
-    const idx = logs.findIndex(l=>l.id===targetDraft.id);
-    if(idx>=0) logs[idx] = targetDraft; else { assignSerialIfNeeded(targetDraft); logs.push(targetDraft); }
-    saveAll();
-    if(draft === targetDraft){
-      setAutosaveStatus('נשמר אוטומטית · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
-    }
-  }, 900);
+  autosaveTimer = setTimeout(()=>{ pendingAutosaveDraft = null; runAutosave(targetDraft); }, 900);
 }
 function flushAutosave(){
   clearTimeout(autosaveTimer);
+  pendingAutosaveDraft = null;
   if(draft && draft.projectId && draft.date && !findConflictingLog(draft.projectId, draft.subProjectId, draft.date, draft.id)){
     const idx = logs.findIndex(l=>l.id===draft.id);
     if(idx>=0) logs[idx] = draft; else { assignSerialIfNeeded(draft); logs.push(draft); }
@@ -2937,6 +2994,7 @@ function renderDailyLog(main, loadId){
     updateSiteManagerForDraft();
   }
   clearTimeout(autosaveTimer);
+  if(pendingAutosaveDraft){ const pd = pendingAutosaveDraft; pendingAutosaveDraft = null; runAutosave(pd); }   // carry out, don't drop, a save that was still waiting
 
   const savedAlready = logs.some(l=>l.id===draft.id);
 
@@ -3094,7 +3152,30 @@ function renderDailyLog(main, loadId){
     scheduleAutosave();
     checkAndHandleDuplicateDate();
   };
-  document.getElementById('d_date').onchange = e=>{ draft.date = e.target.value; updateSiteManagerForDraft(); scheduleAutosave(); checkAndHandleDuplicateDate(); };
+  document.getElementById('d_date').onchange = e=>{
+    // Changing the date of an already-saved log MOVES that log to the new date (it does not create a new one) - ask first
+    // (28.10.2026: such a move, followed by a move back onto a date somebody else had meanwhile started, "lost" a log).
+    const prevDate = e.target.defaultValue;
+    const isSaved = logs.some(l=>l.id===draft.id);
+    if(isSaved && prevDate && e.target.value && e.target.value!==prevDate){
+      // The open draft IS the stored log (same object) - so its date must not be touched at all while another live log owns the
+      // target date: just offer to open that one, and leave this log exactly where it is.
+      const other = findConflictingLog(draft.projectId, draft.subProjectId, e.target.value, draft.id);
+      if(other){
+        if(!confirm(`ליום ${fmtDate(e.target.value)} כבר קיים יומן לפרויקט זה.\nלעבור לעריכתו? (היומן הנוכחי יישאר בתאריך ${fmtDate(prevDate)}.)`)){ e.target.value = prevDate; return; }
+        flushAutosave();
+        draft = JSON.parse(JSON.stringify(other));
+        render();
+        return;
+      }
+    }
+    if(isSaved && draftHasContent() && prevDate && e.target.value && e.target.value!==prevDate){
+      if(!confirm(`לשנות את תאריך היומן מ-${fmtDate(prevDate)} ל-${fmtDate(e.target.value)}?\nהיומן יעבור לתאריך החדש ולא יישאר בתאריך הקודם.\n(כדי לרשום יומן נוסף לתאריך אחר - לחץ "יומן חדש".)`)){
+        e.target.value = prevDate; return;
+      }
+    }
+    draft.date = e.target.value; updateSiteManagerForDraft(); scheduleAutosave(); checkAndHandleDuplicateDate();
+  };
   document.getElementById('d_weather').onchange = e=>{ draft.weather = e.target.value; scheduleAutosave(); };
   const subProjSel = document.getElementById('d_subproject');
   if(subProjSel){
@@ -4849,6 +4930,10 @@ function renderSearch(main){
         if(!log) return;
         if(!log.deleted){
           if(!confirm(`לסמן את היומן מתאריך ${fmtDate(log.date)} כמבוטל? הרשומה תישאר בתיעוד, אך תוצג עם קו חוצה על כל התוכן ולא תיכלל בדוחות.`)) return;
+        } else if(findConflictingLog(log.projectId, log.subProjectId, log.date, log.id)){
+          // un-cancelling would create a second live log for the same project+date
+          alert(`לא ניתן לבטל את סימון המחיקה: ליום ${fmtDate(log.date)} כבר קיים יומן פעיל אחר לפרויקט הזה.`);
+          return;
         }
         log.deleted = !log.deleted;
         saveAll();
@@ -6292,7 +6377,7 @@ function restoreDataMerge(data){
   });
   incomingLogs.forEach(l=>{
     if(logs.some(x=>x.id===l.id)) return; // already have this exact log - skip silently, nothing lost
-    const dateConflict = logs.find(x=> x.projectId===l.projectId && (x.subProjectId||'')===(l.subProjectId||'') && x.date===l.date);
+    const dateConflict = logs.find(x=> !x.deleted && x.projectId===l.projectId && (x.subProjectId||'')===(l.subProjectId||'') && x.date===l.date);
     if(dateConflict){
       const proj = projects.find(p=>p.id===l.projectId);
       skippedConflicts.push(`${fmtDate(l.date)} (${proj?proj.name:'פרויקט לא ידוע'})`);
