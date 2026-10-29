@@ -219,6 +219,9 @@
   #r8_table .tbx-matrix .tbx-day-header, #r8_table .tbx-matrix .tbx-cell, #r8_table .tbx-matrix .tbx-crew-day-total{width:21px;}
   #r8_table .tbx-matrix .tbx-name-cell{width:86px; min-width:86px; white-space:normal; line-height:1.15; font-size:10px;}
   #r8_table .tbx-matrix .tbx-week-total{background:#E0ECF8; border-inline:2px solid var(--navy);}
+  /* partial printing: unticked workers stay visible but dimmed on screen and are dropped from the printout */
+  #r8_table .r8-off td{opacity:.38;}
+  @media print{ #r8_table .r8-off{display:none !important;} }
   .entity-list{list-style:none; padding:0; margin:0;}
   .entity-list li{
     display:flex; justify-content:space-between; align-items:center;
@@ -6064,7 +6067,8 @@ function renderToolboxMatrixReport(main){
       ? crewOpts.map(cr=>`<label style="display:inline-flex; gap:5px; align-items:center; margin:0; font-weight:normal; color:var(--text);"><input type="checkbox" value="${cr.id}" style="width:auto;"> ${esc(cr.name)}</label>`).join('')
       : '<span class="hint">בחר קבלן כדי לבחור קבוצות · בלי סימון = כל הקבוצות</span>';
   };
-  document.getElementById('r8_go').onclick = buildToolboxMatrixReportTable;
+  const r8Excluded = new Set();   // "workerId__crewId" rows the user unticked (left out of the printout); every new report starts with all ticked
+  document.getElementById('r8_go').onclick = ()=>{ r8Excluded.clear(); buildToolboxMatrixReportTable(); };
   document.getElementById('r8_pdf').onclick = ()=> window.print();
 
   function buildToolboxMatrixReportTable(){
@@ -6096,27 +6100,36 @@ function renderToolboxMatrixReport(main){
     let rowsHtml = '';
     contractorBlocks.forEach(({contractor:c, crewBlocks})=>{
       crewBlocks.forEach(({crew:cr, rows})=>{
-        rowsHtml += `<tr class="tbx-group-row"><td colspan="${days.length+4}">${esc(c.name)} - ${esc(cr.name)}${cr.description?(' ('+esc(cr.description)+')'):''}</td></tr>`;
+        // Partial printing (29.10.2026): every worker row has a tick (default: all ticked = all printed). An unticked worker stays
+        // visible but dimmed on screen, is left out of the printout, of the serial numbering and of every total.
+        const keyOfRow = w=> `${w.id}__${cr.id}`;
+        const includedCount = rows.filter(({worker:w})=> !r8Excluded.has(keyOfRow(w))).length;
+        const crewOff = includedCount===0;
+        rowsHtml += `<tr class="tbx-group-row${crewOff?' r8-off':''}"><td colspan="${days.length+4}">${esc(c.name)} - ${esc(cr.name)}${cr.description?(' ('+esc(cr.description)+')'):''}
+          <span class="no-print" style="margin-inline-start:14px; font-weight:normal; font-size:11px;">להדפסה: ${includedCount} מתוך ${rows.length}
+            <button type="button" class="btn secondary small r8-crew-all" data-crew="${cr.id}" style="padding:1px 8px;">סמן הכול</button>
+            <button type="button" class="btn secondary small r8-crew-none" data-crew="${cr.id}" style="padding:1px 8px;">בטל הכול</button></span></td></tr>`;
         const crewDayTotals = {}; days.forEach(d=> crewDayTotals[d]=0);
-        let crewGrand = 0;
-        rows.forEach(({worker:w, validDays}, idx)=>{
+        let crewGrand = 0, serial = 0;
+        rows.forEach(({worker:w, validDays})=>{
+          const off = r8Excluded.has(keyOfRow(w));
           let rowTotal = 0;
           let cells = '';
           days.forEach(d=>{
             const satCls = saturdays.has(d) ? ' tbx-saturday' : '';
             if(validDays.has(d)){
               const present = presenceByDay[d].has(w.id);
-              if(present){ rowTotal++; dayTotals[d]++; crewDayTotals[d]++; }
+              if(present){ rowTotal++; if(!off){ dayTotals[d]++; crewDayTotals[d]++; } }
               cells += `<td class="tbx-cell${satCls}">${present?'✓':''}</td>`;
             } else {
               cells += `<td class="tbx-cell tbx-cell-na${satCls}">—</td>`;
             }
           });
-          grand += rowTotal; crewGrand += rowTotal;
-          rowsHtml += `<tr><td class="tbx-serial-cell">${idx+1}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell" title="${esc(w.name||'')}">${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell">${rowTotal}</td></tr>`;
+          if(!off){ grand += rowTotal; crewGrand += rowTotal; serial++; }
+          rowsHtml += `<tr class="${off?'r8-off':''}"><td class="tbx-serial-cell">${off?'—':serial}</td><td class="tbx-id-cell">${esc(w.idNumber||'—')}</td><td class="tbx-name-cell" title="${esc(w.name||'')}"><input type="checkbox" class="r8-pick no-print" data-key="${esc(keyOfRow(w))}" ${off?'':'checked'} style="width:auto; margin:0 0 0 4px; vertical-align:middle;" title="להדפסה"> ${esc(w.name||'')}</td>${cells}<td class="tbx-total-cell">${rowTotal}</td></tr>`;
         });
         const crewDayCells = days.map(d=>`<td class="tbx-crew-day-total${saturdays.has(d)?' tbx-saturday':''}">${crewDayTotals[d]}</td>`).join('');
-        rowsHtml += `<tr class="tbx-crew-subtotal-row"><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ קבוצה</td>${crewDayCells}<td class="tbx-crew-grand-total">${crewGrand}</td></tr>`;
+        rowsHtml += `<tr class="tbx-crew-subtotal-row${crewOff?' r8-off':''}"><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ קבוצה</td>${crewDayCells}<td class="tbx-crew-grand-total">${crewGrand}</td></tr>`;
       });
     });
     // Weekly summary (replaces the old per-day "פועלים ליום" footer, 14.10.2026): weeks run Sunday-Saturday
@@ -6143,8 +6156,13 @@ function renderToolboxMatrixReport(main){
           <tfoot><tr><td class="tbx-serial-cell"></td><td class="tbx-id-cell"></td><td class="tbx-name-cell">סה"כ שבועי (ימי פועל)</td>${weekCells}<td>${grand}</td></tr></tfoot>
         </table>
       </div>
-      <div class="note no-print" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו).</div>
+      <div class="note no-print" style="margin-top:6px;">תא עם "—" - הפועל לא היה משויך לקבוצה זו באותו תאריך (לפי היסטוריית שיוך הקבוצות שלו). <b>להדפסה חלקית:</b> בטל את הסימון ליד שם פועל כדי להשאיר אותו מחוץ להדפסה ומהסיכומים (בכל קבוצה יש גם "סמן הכול" / "בטל הכול"); ברירת המחדל - כולם מסומנים.</div>
     `;
+    const rebuild = ()=>{ const y = window.scrollY; buildToolboxMatrixReportTable(); window.scrollTo(0, y); };
+    box.querySelectorAll('.r8-pick').forEach(cb=> cb.onchange = ()=>{ if(cb.checked) r8Excluded.delete(cb.dataset.key); else r8Excluded.add(cb.dataset.key); rebuild(); });
+    const crewPicks = crewId => Array.from(box.querySelectorAll('.r8-pick')).filter(cb=> cb.dataset.key.endsWith('__'+crewId));
+    box.querySelectorAll('.r8-crew-all').forEach(b=> b.onclick = ()=>{ crewPicks(b.dataset.crew).forEach(cb=> r8Excluded.delete(cb.dataset.key)); rebuild(); });
+    box.querySelectorAll('.r8-crew-none').forEach(b=> b.onclick = ()=>{ crewPicks(b.dataset.crew).forEach(cb=> r8Excluded.add(cb.dataset.key)); rebuild(); });
   }
 }
 
