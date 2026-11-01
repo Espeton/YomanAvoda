@@ -226,7 +226,7 @@ function applyData(d){
   if(!Array.isArray(settings.aptTypes) || !settings.aptTypes.length) settings.aptTypes = ['שוק חופשי','מחיר למשתכן','פנטהאוז'];
   invalidateIndex();
   if(migrateGroundLevel()){ invalidateIndex(); setTimeout(saveAll, 0); }
-  sites.forEach(s=>{ if(s.kind==='building') s.levels.forEach(l=>{ if(l.id===GROUND_ID && !l.comps.length) l.name = GROUND_NAME; }); });
+  sites.forEach(s=>{ if(s.kind==='building') s.levels.forEach(l=>{ if(l.id===GROUND_ID && !l.comps.length && l.name==='קרקע') l.name = GROUND_NAME; }); });
 }
 
 /* ---- progress index (key -> entries sorted by date) */
@@ -396,7 +396,7 @@ function trackView(){
   const head = `
     <div class="chips"><span class="lbl">תחום:</span>${trades.map(x=>`<button class="chip ${x.id===t.id?'on':''}" data-trade="${x.id}">${esc(x.name)}</button>`).join('')}</div>
     <div class="chips"><span class="lbl">שלב:</span>${phaseChips}</div>
-    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
+    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div><button class="btn secondary small" data-editlevels="${s.id}" title="שינוי שם, הוספה והסרה של מפלסים">✏️ ערוך מפלסים</button>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
     <div class="curcon">${conLine}</div>`;
   let body;
   if(ph.mode==='level'){
@@ -625,6 +625,41 @@ function openSyncPreview(dl, sourceLabel){
   };
 }
 
+/* Edit the levels of a building / basement part: rename, reorder (top = highest), add and remove. A level that holds
+   apartments or lobbies cannot be removed here; progress already recorded on a removed level stays in the file but is not shown. */
+function openLevelsEditor(sid){
+  const s = siteById(sid); if(!s) return;
+  let w = s.levels.map(l=>({id:l.id, name:l.name, comps:l.comps})).reverse();   /* top-down, like the tracking board */
+  const prog = id => entries.filter(e=>{ const p = e.key.split('|'); return p[0]===s.id && p[2]==='L:'+id; }).length;
+  const draw = ()=>{
+    modal(`<h2>מפלסים - ${esc(s.name)}</h2><div class="sub">מלמעלה (גבוה) למטה. שינוי שם לא פוגע בהתקדמות שנרשמה.</div>
+      ${w.length ? w.map((l,i)=>`<div class="wrow" style="gap:6px; margin-bottom:5px;">
+        <button class="btn secondary small" data-lvup="${i}" ${i?'':'disabled'} title="הזז למעלה">▲</button><button class="btn secondary small" data-lvdn="${i}" ${i<w.length-1?'':'disabled'} title="הזז למטה">▼</button>
+        <input type="text" value="${esc(l.name)}" data-lvname="${i}" style="flex:1; min-width:120px;">
+        <span class="sum">${l.comps.length?`${l.comps.length} דירות/לובי`:(prog(l.id)?`${prog(l.id)} עדכונים`:'')}</span>
+        <button class="btn danger small" data-lvdel="${i}" ${l.comps.length?'disabled title="במפלס יש דירות - לא ניתן להסיר"':''}>הסר</button></div>`).join('') : '<div class="empty">אין מפלסים.</div>'}
+      <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="lvAdd">+ הוסף מפלס</button></div>
+      <div class="right" style="margin-top:12px;"><button class="btn" id="lvSave">שמור</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+    const q = sel => [...document.querySelectorAll(sel)];
+    q('[data-lvname]').forEach(el=> el.oninput = ()=>{ w[+el.dataset.lvname].name = el.value; });
+    q('[data-lvup]').forEach(b=> b.onclick = ()=>{ const i = +b.dataset.lvup; [w[i-1], w[i]] = [w[i], w[i-1]]; draw(); });
+    q('[data-lvdn]').forEach(b=> b.onclick = ()=>{ const i = +b.dataset.lvdn; [w[i+1], w[i]] = [w[i], w[i+1]]; draw(); });
+    q('[data-lvdel]').forEach(b=> b.onclick = ()=>{ const l = w[+b.dataset.lvdel], n = prog(l.id);
+      if(n && !confirm(`במפלס "${l.name}" נרשמו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו. להסיר?`)) return;
+      w.splice(+b.dataset.lvdel, 1); draw(); });
+    document.getElementById('lvAdd').onclick = ()=>{ w.unshift({id:uid('lv'), name:'מפלס חדש', comps:[]}); draw(); };
+    document.getElementById('edCancel').onclick = closeModal;
+    document.getElementById('lvSave').onclick = ()=>{
+      w.forEach(l=> l.name = cleanName(l.name));
+      if(w.some(l=>!l.name)){ toast('נא למלא שם לכל מפלס'); return; }
+      if(new Set(w.map(l=>l.name)).size !== w.length){ toast('שמות המפלסים חייבים להיות שונים'); return; }
+      s.levels = w.map(l=>({id:l.id, name:l.name, comps:l.comps})).reverse();
+      saveAll(); closeModal(); render(); toast('המפלסים עודכנו');
+    };
+  };
+  draw();
+}
+
 /* ---------- bulk assignment: sites ticked one by one (buildings and basement parts separately) */
 let asTradeSel = '', asPicked = new Set();
 function assignSitesHtml(){
@@ -660,7 +695,7 @@ function settingsView(){
       <button class="btn secondary small" id="zAdd">+ הוסף מרחב מרתף</button>
       <button class="btn secondary small" id="zPreset" title="מוסיף שלושה חלקים לפי הגדרת הפרויקט">3 חלקי המרתף של פסגת רמות</button></div></div>`;
   const siteCard = `<div class="card"><h2>מבנים ומרחבים קיימים</h2>
-    ${sites.length===0?'<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>':`<table><thead><tr><th>שם</th><th>סוג</th><th>מפלסים</th><th>דירות</th><th></th></tr></thead><tbody>${sites.map(s=>`<tr><td class="l">${esc(s.name)}${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.kind==='building'?'בניין':'מרתף'}</td><td>${s.levels.length}</td><td>${s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0)}</td><td><button class="btn danger small" data-delsite="${s.id}">מחק</button></td></tr>`).join('')}</tbody></table>`}</div>`;
+    ${sites.length===0?'<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>':`<table><thead><tr><th>שם</th><th>סוג</th><th>מפלסים</th><th>דירות</th><th></th></tr></thead><tbody>${sites.map(s=>`<tr><td class="l">${esc(s.name)}${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.kind==='building'?'בניין':'מרתף'}</td><td>${s.levels.length}</td><td>${s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0)}</td><td style="white-space:nowrap;"><button class="btn secondary small" data-editlevels="${s.id}">✏️ ערוך מפלסים</button> <button class="btn danger small" data-delsite="${s.id}">מחק</button></td></tr>`).join('')}</tbody></table>`}</div>`;
   const conCard = `<div class="card"><h2>קבלנים וצוותים</h2>
     <div class="sum" style="margin-bottom:6px;">טבלת הקבלנים והצוותים של המעקב, והבניינים שבהם הם עובדים. אפשר להוסיף ידנית, או לייבא ולסנכרן קבלנים וצוותים מהיומן היומי.</div>
     <div class="bar"><button class="btn" id="syncLog">🔄 ייבא קבלנים וצוותים מהיומן היומי</button>
@@ -995,6 +1030,7 @@ function wire(){
     addZone(document.getElementById('zName').value, document.getElementById('zUnder').value, lv); saveAll(); render(); };
   const zp = document.getElementById('zPreset'); if(zp) zp.onclick = ()=>{ const lv = ['רצפת מרתף','מפלס מרתף','תקרת מרתף'];
     [['מרתף - חלק 1','בניינים 1, 2, 3, 11'],['מרתף - חלק 2','בניינים 4, 5, 10'],['מרתף - חלק 3','בניינים 6, 7, 8, 9']].forEach(([n,u])=>{ if(!sites.some(s=>s.name===n)) addZone(n,u,lv); }); saveAll(); render(); };
+  on('[data-editlevels]', el=> el.onclick = ()=> openLevelsEditor(el.dataset.editlevels));
   on('[data-delsite]', el=> el.onclick = ()=>{ const s = siteById(el.dataset.delsite); if(!s) return; const n = entries.filter(e=>e.key.split('|')[0]===s.id).length;
     if(confirm(`למחוק את "${s.name}"?${n?`\nנרשמו בו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו.`:''}`)){ sites = sites.filter(x=>x.id!==s.id); assignments = assignments.filter(a=>a.siteId!==s.id); saveAll(); render(); } });
   const ac = document.getElementById('addCons'); if(ac) ac.onclick = ()=>{ const names = document.getElementById('newCons').value.split(/\r?\n/).map(cleanName).filter(Boolean); let n = 0;
