@@ -691,7 +691,7 @@ function settingsView(){
     <div class="sum" style="margin-bottom:6px;">כל חלק מרתף הוא "בניין" נפרד לגמרי: ללא דירות או לובי, עם מפלסים משלו. "נמצא מתחת ל..." הוא מידע בלבד.</div>
     <div class="bar"><div><label>שם</label><input type="text" id="zName" placeholder="מרתף - חלק 1" style="width:160px"></div>
       <div><label>נמצא מתחת ל... (מידע)</label><input type="text" id="zUnder" placeholder="בניינים 1, 2, 3, 11" style="width:200px"></div>
-      <div><label>מפלסים (מופרדים בפסיק)</label><input type="text" id="zLevels" value="רצפת מרתף, מפלס מרתף, תקרת מרתף" style="width:290px"></div>
+      <div><label>מפלסים (מופרדים בפסיק)</label><input type="text" id="zLevels" value="רצפת מרתף, תקרת מרתף" style="width:290px"></div>
       <button class="btn secondary small" id="zAdd">+ הוסף מרחב מרתף</button>
       <button class="btn secondary small" id="zPreset" title="מוסיף שלושה חלקים לפי הגדרת הפרויקט">3 חלקי המרתף של פסגת רמות</button></div></div>`;
   const siteCard = `<div class="card"><h2>מבנים ומרחבים קיימים</h2>
@@ -1028,7 +1028,7 @@ function wire(){
   }
   const za = document.getElementById('zAdd'); if(za) za.onclick = ()=>{ const lv = document.getElementById('zLevels').value.split(',').map(cleanName).filter(Boolean); if(!lv.length){ toast('נא להגדיר מפלסים'); return; }
     addZone(document.getElementById('zName').value, document.getElementById('zUnder').value, lv); saveAll(); render(); };
-  const zp = document.getElementById('zPreset'); if(zp) zp.onclick = ()=>{ const lv = ['רצפת מרתף','מפלס מרתף','תקרת מרתף'];
+  const zp = document.getElementById('zPreset'); if(zp) zp.onclick = ()=>{ const lv = ["רצפת מרתף","תקרת מרתף"];
     [['מרתף - חלק 1','בניינים 1, 2, 3, 11'],['מרתף - חלק 2','בניינים 4, 5, 10'],['מרתף - חלק 3','בניינים 6, 7, 8, 9']].forEach(([n,u])=>{ if(!sites.some(s=>s.name===n)) addZone(n,u,lv); }); saveAll(); render(); };
   on('[data-editlevels]', el=> el.onclick = ()=> openLevelsEditor(el.dataset.editlevels));
   on('[data-delsite]', el=> el.onclick = ()=>{ const s = siteById(el.dataset.delsite); if(!s) return; const n = entries.filter(e=>e.key.split('|')[0]===s.id).length;
