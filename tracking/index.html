@@ -625,6 +625,19 @@ function openSyncPreview(dl, sourceLabel){
   };
 }
 
+/* ---------- bulk assignment: sites ticked one by one (buildings and basement parts separately) */
+let asTradeSel = '', asPicked = new Set();
+function assignSitesHtml(){
+  if(!tradeById(asTradeSel)) asTradeSel = (trades[0]||{}).id || '';
+  const group = (title, kind)=>{ const list = sites.filter(s=>s.kind===kind); if(!list.length) return '';
+    const free = list.filter(s=>!currentAssign(s.id,asTradeSel));
+    return `<div style="margin-bottom:8px;"><div style="font-weight:bold; margin-bottom:3px;">${title}
+        <button class="btn secondary small" data-asgrp="${kind}|1" ${free.length?'':'disabled'}>סמן את כולם</button> <button class="btn secondary small" data-asgrp="${kind}|0">נקה</button></div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px 16px;">${list.map(s=>{ const cur = currentAssign(s.id,asTradeSel);
+        return `<label class="inl" style="${cur?'opacity:.6;':''}"><input type="checkbox" data-assite="${s.id}" ${cur?'disabled':''} ${!cur && asPicked.has(s.id)?'checked':''}> ${esc(s.name)}${cur?` <span class="sum">· ${esc(contractorName(cur.contractorId))}</span>`:''}</label>`; }).join('')}</div></div>`; };
+  return (group('בניינים','building') + group('חלקי מרתף','basement')) || '<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>';
+}
+
 /* ---------- settings: import structure, basement zones, contractors, assignments, backup */
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
@@ -656,11 +669,11 @@ function settingsView(){
     <textarea id="newCons" placeholder="שם קבלן בכל שורה" style="min-height:70px; margin-top:8px;"></textarea>
     <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="addCons">+ הוסף קבלנים</button></div></div>`;
   const assignCard = `<div class="card"><h2>הקצאת קבלן מבצע לתחום</h2>
-    <div class="sum" style="margin-bottom:6px;">מקצה קבלן לתחום בכל הבניינים (או כל חלקי המרתף) שעדיין אין להם קבלן בתחום הזה. החלפת קבלן אחר כך - במעקב המפורט.</div>
-    <div class="bar"><div><label>תחום</label><select id="asTrade">${trades.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
+    <div class="sum" style="margin-bottom:6px;">בחר תחום וקבלן, וסמן את הבניינים וחלקי המרתף שאליהם להקצות - אחד או יותר. מבנה שכבר יש לו קבלן בתחום הזה מסומן ולא ניתן לבחירה (החלפת קבלן - במעקב המפורט).</div>
+    <div class="bar"><div><label>תחום</label><select id="asTrade">${trades.map(t=>`<option value="${t.id}" ${t.id===asTradeSel?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>
       <div><label>קבלן</label><select id="asCon">${contractorOptions('')}</select></div>
-      <div><label>היקף</label><select id="asScope"><option value="building">כל הבניינים</option><option value="basement">כל חלקי המרתף</option><option value="all">הכול</option></select></div>
-      <button class="btn small" id="asGo">הקצה</button></div></div>`;
+      <button class="btn small" id="asGo">הקצה למסומנים</button></div>
+    <div id="asSites" style="margin-top:8px;">${assignSitesHtml()}</div></div>`;
   const backupCard = `<div class="card"><h2>גיבוי</h2><div class="bar"><button class="btn secondary" id="bkExport">הורד גיבוי (JSON)</button>
       <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">טען גיבוי (החלפה מלאה)<input type="file" id="bkImport" accept="application/json" style="display:none;"></label></div>
     <div class="sum">הנתונים נשמרים אוטומטית ב-Google Drive. הגיבוי הוא עותק מקומי נוסף.</div></div>`;
@@ -1001,10 +1014,20 @@ function wire(){
     rd.onload = ()=>{ try{ const d = JSON.parse(rd.result); if(!Array.isArray(d.contractors)) throw new Error('x'); openSyncPreview(d, 'מקור: קובץ גיבוי '+f.name); }catch(err){ toast('הקובץ אינו גיבוי תקין של היומן היומי'); } };
     rd.readAsText(f); };
   on('[data-concactive]', el=> el.onclick = ()=>{ const c = contractors.find(x=>x.id===el.dataset.concactive); if(c){ c.active = c.active===false; saveAll(); render(); } });
-  const ag = document.getElementById('asGo'); if(ag) ag.onclick = ()=>{ const tid = document.getElementById('asTrade').value, cid = document.getElementById('asCon').value, scope = document.getElementById('asScope').value;
-    if(!cid){ toast('נא לבחור קבלן'); return; } let n = 0;
-    sites.forEach(s=>{ if(scope!=='all' && s.kind!==scope) return; if(currentAssign(s.id,tid)) return; assignments.push({id:uid('as'), siteId:s.id, tradeId:tid, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}); n++; });
-    saveAll(); toast(n ? `הוקצה ל-${n} מבנים/מרחבים` : 'לכל המבנים כבר יש קבלן בתחום זה'); render(); };
+  const wireAsSites = ()=>{
+    document.querySelectorAll('[data-assite]').forEach(cb=> cb.onchange = ()=>{ if(cb.checked) asPicked.add(cb.dataset.assite); else asPicked.delete(cb.dataset.assite); });
+    document.querySelectorAll('[data-asgrp]').forEach(b=> b.onclick = ()=>{ const [kind,on] = b.dataset.asgrp.split('|');
+      sites.filter(s=>s.kind===kind).forEach(s=>{ if(on==='1' && !currentAssign(s.id,asTradeSel)) asPicked.add(s.id); else if(on==='0') asPicked.delete(s.id); });
+      document.getElementById('asSites').innerHTML = assignSitesHtml(); wireAsSites(); });
+  };
+  const asT = document.getElementById('asTrade'); if(asT){ asT.onchange = ()=>{ asTradeSel = asT.value; document.getElementById('asSites').innerHTML = assignSitesHtml(); wireAsSites(); }; wireAsSites(); }
+  const ag = document.getElementById('asGo'); if(ag) ag.onclick = ()=>{ const tid = document.getElementById('asTrade').value, cid = document.getElementById('asCon').value;
+    if(!cid){ toast('נא לבחור קבלן'); return; }
+    const ids = sites.filter(s=> asPicked.has(s.id) && !currentAssign(s.id,tid)).map(s=>s.id);
+    if(!ids.length){ toast('לא סומן אף בניין או חלק מרתף'); return; }
+    ids.forEach(sid=> assignments.push({id:uid('as'), siteId:sid, tradeId:tid, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}));
+    ids.forEach(sid=> asPicked.delete(sid));
+    saveAll(); toast(`הוקצה ל-${ids.length} מבנים/מרחבים`); render(); };
   const be = document.getElementById('bkExport'); if(be) be.onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-מעקב-ביצוע-${todayStr()}.json`; a.click(); };
   const bi = document.getElementById('bkImport'); if(bi) bi.onchange = e=>{ const f = e.target.files[0]; if(!f) return; const rd = new FileReader(); rd.onload = ()=>{ try{ const d = JSON.parse(rd.result);
       if(confirm('לטעון את הגיבוי? כל הנתונים הנוכחיים יוחלפו (גם ב-Drive).')){ applyData(d); saveAll(); render(); toast('הגיבוי נטען'); } }catch(err){ toast('הקובץ אינו גיבוי תקין'); } }; rd.readAsText(f); };
