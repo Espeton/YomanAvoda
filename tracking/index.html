@@ -193,7 +193,7 @@ const it = (n,w)=>({n, w: w||1});
 function defaultTrades(){
   const mk = (id,name,phases)=>({id,name,phases});
   return [
-    mk('concrete','בטון ובלוקים',[{id:'frame', name:'שלד', weight:100, mode:'level', levelItems:[{...it('רצפה',20), scope:'ground'},it('קירות',25),it('תקרה',50),it('בלוקים',5)]}]),
+    mk('concrete','בטון ובלוקים',[{id:'frame', name:'שלד', weight:100, mode:'level', levelItems:[{...it('רצפה',20), scope:'ground'},{...it('קירות',25), scope:'upper'},{...it('תקרה',50), scope:'upper'},{...it('בלוקים',5), scope:'upper'}]}]),
     mk('plumb','אינסטלציה',[
       {id:'black', name:'שלב שחור', weight:60, mode:'level', levelItems:[it('צנרת ורטיקלית - קירות'),it('צנרת ורטיקלית - תקרה'),it('צנרת הוריזונטלית - קירות'),it('צנרת הוריזונטלית - תקרה')]},
       {id:'white', name:'שלב לבן (אביזרים)', weight:40, mode:'component', lobbyWeight:0.5, compItems:{apartment:[it('אסלה'),it('כיור'),it('ארון אמבט'),it('ברזים')], lobby:[it('ברז שירות'),it('נקודת ניקוז')]}, variants:{}}]),
@@ -225,6 +225,7 @@ function applyData(d){
   settings = (d.settings && typeof d.settings==='object') ? d.settings : {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
   if(!Array.isArray(settings.aptTypes) || !settings.aptTypes.length) settings.aptTypes = ['שוק חופשי','מחיר למשתכן','פנטהאוז'];
   invalidateIndex();
+  if(migrateGroundLevel()){ invalidateIndex(); setTimeout(saveAll, 0); }
 }
 
 /* ---- progress index (key -> entries sorted by date) */
@@ -261,9 +262,40 @@ function assignRows(sid,tid){ return assignments.filter(a=>a.siteId===sid && a.t
 function contractorAt(sid,tid,date){ let c = ''; assignRows(sid,tid).forEach(a=>{ if(date>=a.from) c = a.contractorId; }); return c; }
 function currentAssign(sid,tid){ const r = assignRows(sid,tid); return r.length ? r[r.length-1] : null; }
 
-/* Level-mode items can be limited to some levels: scope '' = every level, 'ground' = only the ground floor (קרקע),
-   'upper' = every level except the ground floor (e.g. a floor slab "רצפה" only exists on the ground floor). */
-function levelItemsFor(ph, lv){ return (ph.levelItems||[]).filter(i=> !i.scope || (i.scope==='ground' ? lv.id==='קרקע' : lv.id!=='קרקע')); }
+/* Every building has ONE "קרקע" level (id GROUND_ID, no apartments) below its floors; the floors (including "קומת קרקע" = floor 0) follow it.
+   Level-mode items can be limited to some levels: scope '' = every level, 'ground' = only the "קרקע" level (e.g. a floor slab "רצפה"),
+   'upper' = every level except "קרקע" (e.g. walls and ceiling, which every floor has, ground floor included). */
+const GROUND_ID = 'קרקע';
+function levelItemsFor(ph, lv){ return (ph.levelItems||[]).filter(i=> !i.scope || (i.scope==='ground' ? lv.id===GROUND_ID : lv.id!==GROUND_ID)); }
+/* One-time migration of data saved before the "קרקע" level was separate: the old level 'קרקע' was floor 0 (with apartments).
+   It becomes 'קומה 0' / "קומת קרקע", a new empty 'קרקע' level is added below it, progress of 'ground'-scope items stays on 'קרקע',
+   the rest moves to 'קומה 0', and level items of templates that had no scope become 'upper' (they belong to floors, not to the ground). */
+function migrateGroundLevel(){
+  if(settings.groundSplit) return false;
+  settings.groundSplit = true;
+  let changed = false;
+  const moved = new Set();
+  sites.forEach(s=>{
+    if(s.kind!=='building') return;
+    const g = s.levels.find(l=>l.id===GROUND_ID);
+    if(!g || !g.comps.length) return;
+    g.id = 'קומה 0'; g.name = 'קומת קרקע';
+    s.levels.unshift({id:GROUND_ID, name:'קרקע', comps:[]});
+    moved.add(s.id); changed = true;
+  });
+  if(!changed) return false;
+  const groundItems = new Set();
+  trades.forEach(t=> t.phases.forEach(ph=>{ if(ph.mode==='level') (ph.levelItems||[]).forEach(i=>{ if(i.scope==='ground') groundItems.add(phaseKey(t,ph)+'|'+i.n); else if(!i.scope) i.scope = 'upper'; }); }));
+  entries.forEach(e=>{
+    const [sid, pk, unit, item] = e.key.split('|');
+    if(moved.has(sid) && unit==='L:'+GROUND_ID && !groundItems.has(pk+'|'+item)) e.key = keyOf(sid, pk, 'L:קומה 0', item);
+  });
+  reminders.forEach(r=>{
+    const [sid, pk, unit, item] = String(r.key||'').split('|');
+    if(moved.has(sid) && unit==='L:'+GROUND_ID && !groundItems.has(pk+'|'+item)) r.key = keyOf(sid, pk, 'L:קומה 0', item);
+  });
+  return true;
+}
 /* ============================================================== roll-ups (getter = current or "as of date") */
 function unitPct(sid,pk,unit,items,get){ let s = 0, w = 0; items.forEach(i=>{ s += i.w*get(keyOf(sid,pk,unit,i.n)); w += i.w; }); return w ? s/w : null; }
 function levelPct(s,t,ph,lv,get){
@@ -382,7 +414,7 @@ function trackView(){
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">—</span></div>
       <div class="empty">השלב "${esc(ph.name)}" מתנהל לפי דירות ולובי, ולכן אינו חל על ${esc(s.name)} (מרחב ללא דירות). בחר שלב אחר של התחום.</div></div>`;
   } else {
-    const rows = levelsTopDown(s).map(lv=>{
+    const rows = levelsTopDown(s).filter(lv=>lv.comps.length).map(lv=>{
       const lp = levelPct(s,t,ph,lv,curGet);
       const tiles = lv.comps.map(c=>{
         const items = unitItems(ph,c);
@@ -536,26 +568,55 @@ function diffDailyLog(dl){
   return {addC, updC, addCr, updCr};
 }
 function openSyncPreview(dl, sourceLabel){
-  const d = diffDailyLog(dl), total = d.addC.length + d.updC.length + d.addCr.length + d.updCr.length;
-  const list = (title, arr, f)=> arr.length ? `<div class="sum" style="margin-top:8px;"><b>${title} (${arr.length}):</b> ${arr.slice(0,25).map(x=>esc(f(x))).join(' · ')}${arr.length>25?' ...':''}</div>` : '';
-  modal(`<h2>סנכרון קבלנים וצוותים מהיומן היומי</h2><div class="sub">${esc(sourceLabel)}</div>
-    ${total ? `${list('קבלנים חדשים',d.addC,x=>x.name)}${list('צוותים חדשים',d.addCr,x=>`${x.name} (${(d.addC.find(c=>c.id===x.contractorId)||contractors.find(c=>c.id===x.contractorId)||{}).name||''})`)}${list('קבלנים שיעודכנו (שם/סטטוס/קישור)',d.updC,x=>x.name)}${list('צוותים שיעודכנו',d.updCr,x=>x.name)}
-      <div class="note">לא נמחק דבר, והבניינים וההקצאות שהוגדרו כאן לא משתנים. שם וסטטוס פעיל של קבלן מקושר נלקחים מהיומן.</div>`
-      : '<div class="empty">הכול כבר מסונכרן - אין קבלנים או צוותים חדשים ביומן.</div>'}
-    <div class="right" style="margin-top:12px;">${total?'<button class="btn" id="syApply">בצע סנכרון</button>':''}<button class="btn secondary" id="edCancel">${total?'ביטול':'סגור'}</button></div>`);
+  /* A list to choose from: only contractors (and crews) not yet transferred are offered. Already-linked ones whose name / status
+     changed in the daily log are refreshed through one optional checkbox. */
+  const d = diffDailyLog(dl), upd = d.updC.length + d.updCr.length;
+  const ownerKnown = c => contractors.find(x=>x.id===c.contractorId);
+  const crewsOf = id => d.addCr.filter(x=>x.contractorId===id);
+  const oldOwners = [...new Set(d.addCr.filter(x=>ownerKnown(x)).map(x=>x.contractorId))];
+  const crewRow = (cr, ci)=> `<label class="inl" style="display:block; margin:2px 0 0 0; padding-inline-start:26px;"><input type="checkbox" data-sycr="${d.addCr.indexOf(cr)}" data-syown="${ci}" ${ci==='old'?'checked':'disabled'}> ${esc(cr.name)}${cr.description?` <span class="sum">· ${esc(cr.description)}</span>`:''}</label>`;
+  const newBlocks = d.addC.map((c,i)=> `<div style="border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:6px; background:#fff;">
+      <label class="inl" style="font-weight:bold;"><input type="checkbox" data-syc="${i}"> ${esc(c.name)}${c.active===false?' <span class="sum">(לא פעיל)</span>':''}</label>
+      ${crewsOf(c.id).map(cr=>crewRow(cr,i)).join('') || '<div class="sum" style="padding-inline-start:26px;">אין צוותים ביומן</div>'}</div>`).join('');
+  const oldBlocks = oldOwners.map(id=> `<div style="border:1px dashed var(--border); border-radius:8px; padding:7px 10px; margin-bottom:6px; background:#FAFBFC;">
+      <div style="font-weight:bold;">${esc((contractors.find(x=>x.id===id)||{}).name||'')} <span class="sum">· הועבר קודם, צוותים חדשים בלבד</span></div>
+      ${crewsOf(id).map(cr=>crewRow(cr,'old')).join('')}</div>`).join('');
+  const empty = !d.addC.length && !oldOwners.length;
+  modal(`<h2>ייבוא קבלנים וצוותים מהיומן היומי</h2><div class="sub">${esc(sourceLabel)}</div>
+    ${empty ? '<div class="empty">כל הקבלנים והצוותים מהיומן כבר הועברו.</div>' : `
+      <div class="sum" style="margin-bottom:8px;">סמן את הקבלנים להעברה. בחירת קבלן מסמנת את כל הצוותים שלו, ואפשר לבטל סימון של צוות. מוצגים רק קבלנים שלא הועברו קודם.</div>
+      <div class="bar" style="margin:0 0 8px;"><button class="btn secondary small" id="syAll">בחר את כולם</button><button class="btn secondary small" id="syNone">נקה בחירה</button><span class="sum" id="syCount"></span></div>
+      <div style="max-height:46vh; overflow:auto;">${newBlocks}${oldBlocks}</div>`}
+    ${upd ? `<label class="inl" style="display:block; margin-top:8px;"><input type="checkbox" id="syUpd" checked> עדכן שם/סטטוס של ${upd} קבלנים וצוותים שכבר הועברו ושונו ביומן</label>` : ''}
+    <div class="note">לא נמחק דבר, והבניינים וההקצאות שהוגדרו כאן לא משתנים.</div>
+    <div class="right" style="margin-top:12px;">${(empty&&!upd)?'':'<button class="btn" id="syApply">העבר את המסומנים</button>'}<button class="btn secondary" id="edCancel">${(empty&&!upd)?'סגור':'ביטול'}</button></div>`);
   document.getElementById('edCancel').onclick = closeModal;
+  const qa = sel => [...document.querySelectorAll(sel)];
+  const recount = ()=>{ const el = document.getElementById('syCount'); if(el) el.textContent = `נבחרו ${qa('[data-syc]:checked').length} קבלנים · ${qa('[data-sycr]:checked').length} צוותים`; };
+  qa('[data-syc]').forEach(cb=> cb.onchange = ()=>{ qa(`[data-syown="${cb.dataset.syc}"]`).forEach(x=>{ x.disabled = !cb.checked; x.checked = cb.checked; }); recount(); });
+  qa('[data-sycr]').forEach(cb=> cb.addEventListener('change', recount));
+  const setAll = on => { qa('[data-syc]').forEach(cb=>{ cb.checked = on; cb.onchange(); }); qa('[data-syown="old"]').forEach(x=> x.checked = on); recount(); };
+  const all = document.getElementById('syAll'); if(all) all.onclick = ()=> setAll(true);
+  const none = document.getElementById('syNone'); if(none) none.onclick = ()=> setAll(false);
+  recount();
   const ap = document.getElementById('syApply'); if(ap) ap.onclick = ()=>{
-    d.addC.forEach(c=> contractors.push(c)); d.addCr.forEach(c=> crews.push(c));
-    d.updC.forEach(u=>{ u.loc.name = u.name; u.loc.active = u.active; u.loc.srcId = u.srcId; });
-    d.updCr.forEach(u=>{ u.loc.name = u.name; u.loc.description = u.description; u.loc.srcId = u.srcId; u.loc.contractorId = u.contractorId; });
-    saveAll(); closeModal(); render(); toast(`סונכרנו: ${d.addC.length} קבלנים ו-${d.addCr.length} צוותים חדשים, ${d.updC.length+d.updCr.length} עודכנו`);
+    const pickC = qa('[data-syc]:checked').map(cb=> d.addC[+cb.dataset.syc]);
+    const pickCr = qa('[data-sycr]:checked').map(cb=> d.addCr[+cb.dataset.sycr]);
+    const doUpd = !!(document.getElementById('syUpd') && document.getElementById('syUpd').checked);
+    if(!pickC.length && !pickCr.length && !doUpd){ toast('לא נבחר דבר להעברה'); return; }
+    pickC.forEach(c=> contractors.push(c)); pickCr.forEach(c=> crews.push(c));
+    if(doUpd){
+      d.updC.forEach(u=>{ u.loc.name = u.name; u.loc.active = u.active; u.loc.srcId = u.srcId; });
+      d.updCr.forEach(u=>{ u.loc.name = u.name; u.loc.description = u.description; u.loc.srcId = u.srcId; u.loc.contractorId = u.contractorId; });
+    }
+    saveAll(); closeModal(); render(); toast(`הועברו: ${pickC.length} קבלנים ו-${pickCr.length} צוותים${doUpd?`, עודכנו ${upd}`:''}`);
   };
 }
 
 /* ---------- settings: import structure, basement zones, contractors, assignments, backup */
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
-    <div class="sum" style="margin-bottom:8px;">העמודות בקובץ, בסדר הזה: <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קרקע. נקרא הגיליון הראשון.</div>
+    <div class="sum" style="margin-bottom:8px;">העמודות בקובץ, בסדר הזה: <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קומת קרקע (בכל בניין נוצר בנוסף מפלס "קרקע" אחד, מתחת לקומות). נקרא הגיליון הראשון.</div>
     <div id="impDrop" style="border:2px dashed var(--navy); border-radius:10px; padding:22px; text-align:center; cursor:pointer; background:#F8FAFD; margin-bottom:10px;">
       <div style="font-size:30px; line-height:1.2;">📂</div><b>גרור לכאן את קובץ ה-Excel, או לחץ כאן לבחירת קובץ</b>
       <div class="sum">xlsx / xls / csv - הייבוא מתבצע מיד אחרי הבחירה</div>
@@ -577,7 +638,7 @@ function settingsView(){
     ${sites.length===0?'<div class="empty">עדיין לא הוגדרו בניינים או מרחבי מרתף.</div>':`<table><thead><tr><th>שם</th><th>סוג</th><th>מפלסים</th><th>דירות</th><th></th></tr></thead><tbody>${sites.map(s=>`<tr><td class="l">${esc(s.name)}${s.under?`<div class="sum">מתחת ל${esc(s.under)}</div>`:''}</td><td>${s.kind==='building'?'בניין':'מרתף'}</td><td>${s.levels.length}</td><td>${s.levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0)}</td><td><button class="btn danger small" data-delsite="${s.id}">מחק</button></td></tr>`).join('')}</tbody></table>`}</div>`;
   const conCard = `<div class="card"><h2>קבלנים וצוותים</h2>
     <div class="sum" style="margin-bottom:6px;">טבלת הקבלנים והצוותים של המעקב, והבניינים שבהם הם עובדים. אפשר להוסיף ידנית, או לייבא ולסנכרן קבלנים וצוותים מהיומן היומי.</div>
-    <div class="bar"><button class="btn" id="syncLog">🔄 סנכרן קבלנים וצוותים מהיומן היומי</button>
+    <div class="bar"><button class="btn" id="syncLog">🔄 ייבא קבלנים וצוותים מהיומן היומי</button>
       <label class="btn secondary" style="display:inline-block; cursor:pointer; margin:0;">ייבא מקובץ גיבוי של היומן<input type="file" id="syncFile" accept="application/json,.json" style="display:none;"></label></div>
     ${contractorsTableHtml()}
     <textarea id="newCons" placeholder="שם קבלן בכל שורה" style="min-height:70px; margin-top:8px;"></textarea>
@@ -799,9 +860,10 @@ function importApartments(rows, opts){
     const levels = floors.map(f=>{
       const comps = byB[b][f].sort((x,y)=>x.n-y.n).map(a=>({id:`${id}-${f}-a${a.n}`, kind:'apartment', name:'דירה '+a.n, type: a.pt ? 'מחיר למשתכן' : 'שוק חופשי', lay:a.lay, rooms:a.rooms, area:a.area}));
       if(opts.lobby) comps.push({id:`${id}-${f}-lobby`, kind:'lobby', name:'לובי'});
-      return {id: f===0 ? 'קרקע' : 'קומה '+f, name: f===0 ? 'קרקע' : 'קומה '+f, comps};
+      return {id: 'קומה '+f, name: f===0 ? 'קומת קרקע' : 'קומה '+f, comps};
     });
     if(opts.pent && levels.length>1){ const top = levels[levels.length-1], apts = top.comps.filter(c=>c.kind==='apartment'); if(apts.length===1) apts[0].type = 'פנטהאוז'; }
+    levels.unshift({id:GROUND_ID, name:'קרקע', comps:[]});   /* one "קרקע" level per building, below all floors */
     na += levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0);
     const ex = siteById(id);
     if(ex){ ex.levels = levels; } else { sites.push({id, kind:'building', name:'בניין '+b, under:'', levels}); }
@@ -921,7 +983,7 @@ function wire(){
     sl.disabled = true; sl.textContent = 'קורא את קובץ היומן מ-Drive...';
     try{ openSyncPreview(await fetchDailyLogData(), 'מקור: קובץ היומן היומי ב-Google Drive'); }
     catch(err){ toast(String(err && err.message || err)); }
-    finally{ sl.disabled = false; sl.textContent = '🔄 סנכרן קבלנים וצוותים מהיומן היומי'; }
+    finally{ sl.disabled = false; sl.textContent = '🔄 ייבא קבלנים וצוותים מהיומן היומי'; }
   };
   const sf = document.getElementById('syncFile'); if(sf) sf.onchange = e=>{ const f = e.target.files[0]; e.target.value = ''; if(!f) return; const rd = new FileReader();
     rd.onload = ()=>{ try{ const d = JSON.parse(rd.result); if(!Array.isArray(d.contractors)) throw new Error('x'); openSyncPreview(d, 'מקור: קובץ גיבוי '+f.name); }catch(err){ toast('הקובץ אינו גיבוי תקין של היומן היומי'); } };
