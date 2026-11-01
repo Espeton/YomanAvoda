@@ -365,7 +365,7 @@
   .wcr-details td:nth-child(odd){background:#FAFBFC; font-weight:bold; width:18%;}
   .wcr-sum-table{width:100%; border-collapse:collapse;}
   .wcr-sum-table th, .wcr-sum-table td{padding:4px 10px; border:1px solid var(--border); font-size:13px; text-align:right;}
-  .wcr-sum-table td:last-child, .wcr-sum-table th:last-child{width:28%; text-align:center;}
+  .wcr-sum-table td:not(:first-child), .wcr-sum-table th:not(:first-child){width:22%; text-align:center;}
   .wcr-sum-table tfoot td{font-weight:bold; background:#F0F4F8;}
   @media print{
     .wcr-card{border:none; padding:0; margin:0; page-break-inside:avoid; break-inside:avoid;}
@@ -6028,13 +6028,13 @@ function renderWorkCardsReport(main){
   function summaryPageHtml(cards, c, month){
     const hrs = n => Math.round(n*100)/100;
     const byCrew = [];
-    cards.forEach(({w, cr})=>{ let g = byCrew.find(x=>x.cr.id===cr.id); if(!g){ g = {cr, rows:[], sum:0}; byCrew.push(g); } const h = computeWorkCardTotals(w.id, month).hours; g.rows.push({w, h}); g.sum += h; });
+    cards.forEach(({w, cr})=>{ let g = byCrew.find(x=>x.cr.id===cr.id); if(!g){ g = {cr, rows:[], sum:0, days:0}; byCrew.push(g); } const t = computeWorkCardTotals(w.id, month); g.rows.push({w, h:t.hours, d:t.days}); g.sum += t.hours; g.days += t.days; });
     const tables = byCrew.map(g=>`
       <h4 style="margin:12px 0 4px;">צוות: ${esc(g.cr.name||'')}</h4>
-      <table class="log-table wcr-sum-table"><thead><tr><th>שם הפועל</th><th>סה"כ שעות לחודש</th></tr></thead>
-        <tbody>${g.rows.map(r=>`<tr><td>${esc(r.w.name||'—')}${r.w.active===false?' (לא פעיל)':''}</td><td>${hrs(r.h)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td>סיכום סופי - ${esc(g.cr.name||'צוות')} (${g.rows.length} פועלים)</td><td>${hrs(g.sum)}</td></tr></tfoot></table>`).join('');
-    const grand = byCrew.length>1 ? `<table class="log-table wcr-sum-table" style="margin-top:12px;"><tfoot><tr><td>סיכום סופי - כל הצוותים (${cards.length} פועלים)</td><td>${hrs(byCrew.reduce((s,g)=>s+g.sum,0))}</td></tr></tfoot></table>` : '';
+      <table class="log-table wcr-sum-table"><thead><tr><th>שם הפועל</th><th>סה"כ ימים לחודש</th><th>סה"כ שעות לחודש</th></tr></thead>
+        <tbody>${g.rows.map(r=>`<tr><td>${esc(r.w.name||'—')}${r.w.active===false?' (לא פעיל)':''}</td><td>${r.d}</td><td>${hrs(r.h)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>סיכום סופי - ${esc(g.cr.name||'צוות')} (${g.rows.length} פועלים)</td><td>${g.days}</td><td>${hrs(g.sum)}</td></tr></tfoot></table>`).join('');
+    const grand = byCrew.length>1 ? `<table class="log-table wcr-sum-table" style="margin-top:12px;"><tfoot><tr><td>סיכום סופי - כל הצוותים (${cards.length} פועלים)</td><td>${byCrew.reduce((s,g)=>s+g.days,0)}</td><td>${hrs(byCrew.reduce((s,g)=>s+g.sum,0))}</td></tr></tfoot></table>` : '';
     return `<div class="wcr-card wcr-summary">${buildPrintHeader()}
       <h3 style="margin:4px 0 4px;">סיכום שעות - ${esc(c?c.name:'')} - ${esc(month)}</h3>${tables}${grand}</div>`;
   }
