@@ -226,6 +226,7 @@ function applyData(d){
   if(!Array.isArray(settings.aptTypes) || !settings.aptTypes.length) settings.aptTypes = ['שוק חופשי','מחיר למשתכן','פנטהאוז'];
   invalidateIndex();
   if(migrateGroundLevel()){ invalidateIndex(); setTimeout(saveAll, 0); }
+  sites.forEach(s=>{ if(s.kind==='building') s.levels.forEach(l=>{ if(l.id===GROUND_ID && !l.comps.length) l.name = GROUND_NAME; }); });
 }
 
 /* ---- progress index (key -> entries sorted by date) */
@@ -265,7 +266,7 @@ function currentAssign(sid,tid){ const r = assignRows(sid,tid); return r.length 
 /* Every building has ONE "קרקע" level (id GROUND_ID, no apartments) below its floors; the floors (including "קומת קרקע" = floor 0) follow it.
    Level-mode items can be limited to some levels: scope '' = every level, 'ground' = only the "קרקע" level (e.g. a floor slab "רצפה"),
    'upper' = every level except "קרקע" (e.g. walls and ceiling, which every floor has, ground floor included). */
-const GROUND_ID = 'קרקע';
+const GROUND_ID = 'קרקע', GROUND_NAME = 'רצפת מבנה';
 function levelItemsFor(ph, lv){ return (ph.levelItems||[]).filter(i=> !i.scope || (i.scope==='ground' ? lv.id===GROUND_ID : lv.id!==GROUND_ID)); }
 /* One-time migration of data saved before the "קרקע" level was separate: the old level 'קרקע' was floor 0 (with apartments).
    It becomes 'קומה 0' / "קומת קרקע", a new empty 'קרקע' level is added below it, progress of 'ground'-scope items stays on 'קרקע',
@@ -280,7 +281,7 @@ function migrateGroundLevel(){
     const g = s.levels.find(l=>l.id===GROUND_ID);
     if(!g || !g.comps.length) return;
     g.id = 'קומה 0'; g.name = 'קומת קרקע';
-    s.levels.unshift({id:GROUND_ID, name:'קרקע', comps:[]});
+    s.levels.unshift({id:GROUND_ID, name:GROUND_NAME, comps:[]});
     moved.add(s.id); changed = true;
   });
   if(!changed) return false;
@@ -334,7 +335,7 @@ function describeKey(k){
   const [sid,pk,unit,item] = k.split('|'), [tid,pid] = pk.split('.'), s = siteById(sid), t = tradeById(tid);
   if(!s || !t) return k;
   const ph = phaseOf(t,pid);
-  let where = unit.startsWith('L:') ? unit.slice(2) : (()=>{ for(const l of s.levels){ const c = l.comps.find(x=>x.id===unit); if(c) return l.name+' · '+c.name; } return unit; })();
+  let where = unit.startsWith('L:') ? ((s.levels.find(l=>l.id===unit.slice(2))||{}).name || unit.slice(2)) : (()=>{ for(const l of s.levels){ const c = l.comps.find(x=>x.id===unit); if(c) return l.name+' · '+c.name; } return unit; })();
   return `${s.name} · ${t.name} (${ph.name}) · ${where} · ${item}`;
 }
 
@@ -399,17 +400,28 @@ function trackView(){
     <div class="curcon">${conLine}</div>`;
   let body;
   if(ph.mode==='level'){
-    const cols = ph.levelItems||[];
-    const rows = levelsTopDown(s).map(lv=>{
+    /* Columns are the floor items. Items limited to the ground ("רצפה") have no column: they are one shared field in the
+       bottom "רצפת מבנה" row, spanning the columns of the floor-only items (walls, ceiling, blocks...). */
+    const cols = (ph.levelItems||[]).filter(i=> i.scope!=='ground'), groundItems = (ph.levelItems||[]).filter(i=> i.scope==='ground');
+    const upperCount = cols.filter(i=>i.scope==='upper').length;
+    const cellBtn = (unit, i, label)=>{ const k = keyOf(s.id,pk,unit,i.n), p = curGet(k), r = reminders.find(x=>x.key===k && x.status==='open'); const bell = r ? '<span class="bell">🔔</span>' : '';
+      return `<button class="cell ${bandOf(p)}" data-cell="${esc(k)}">${bell}${label?esc(label)+' ':''}${pctTxt(p)}</button>`; };
+    const rows = levelsTopDown(s).filter(lv=> lv.id!==GROUND_ID || levelItemsFor(ph,lv).length).map(lv=>{
       const unit = 'L:'+lv.id, lp = levelPct(s,t,ph,lv,curGet);
       const here = levelItemsFor(ph,lv);
-      const cells = cols.map(i=>{ if(!here.includes(i)) return '<td class="na">—</td>'; const k = keyOf(s.id,pk,unit,i.n), p = curGet(k), r = reminders.find(x=>x.key===k && x.status==='open'); const bell = r ? '<span class="bell">🔔</span>' : '';
-        return `<td><button class="cell ${bandOf(p)}" data-cell="${esc(k)}">${bell}${pctTxt(p)}</button></td>`; }).join('');
+      let cells = '', merged = false;
+      if(lv.id===GROUND_ID){
+        cells = cols.map(i=>{
+          if(i.scope==='upper'){ if(merged) return ''; merged = true;
+            return `<td colspan="${upperCount}"><div style="display:flex; gap:6px;">${groundItems.map(g=> `<div style="flex:1;">${cellBtn(unit,g,groundItems.length>1?g.n:'')}</div>`).join('')}</div></td>`; }
+          return here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>'; }).join('');
+        if(!cols.length) cells = `<td>${groundItems.map(g=>cellBtn(unit,g,groundItems.length>1?g.n:'')).join('')}</td>`;
+      } else cells = cols.map(i=> here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>').join('');
       return `<tr><td class="lvl">${esc(lv.name)}</td>${cells}<td class="lvlpct">${fp(lp)}</td></tr>`;
     }).join('');
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">${fp(phasePct(s,t,ph,curGet))}</span></div>
-      <div class="scroll"><table><thead><tr><th>מפלס</th>${cols.map(i=>`<th>${esc(i.n)}</th>`).join('')}<th>% מפלס</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="sum" style="margin-top:6px;">שלב לפי מפלס - לחיצה על תא פותחת עדכון (אחוז, תאריך, הערה ותזכורת).</div></div>`;
+      <div class="scroll"><table><thead><tr><th>מפלס</th>${cols.map(i=>`<th>${esc(i.n)}</th>`).join('')}${cols.length?'':'<th>פריט</th>'}<th>% מפלס</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="sum" style="margin-top:6px;">שלב לפי מפלס - לחיצה על תא פותחת עדכון (אחוז, תאריך, הערה ותזכורת). ${groundItems.length?`בשורה "רצפת מבנה" (למטה) מזינים את ${groundItems.map(g=>esc(g.n)).join(', ')} - שדה משותף לכל הבניין.`:''}</div></div>`;
   } else if(!s.levels.some(l=>l.comps.length)){
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">—</span></div>
       <div class="empty">השלב "${esc(ph.name)}" מתנהל לפי דירות ולובי, ולכן אינו חל על ${esc(s.name)} (מרחב ללא דירות). בחר שלב אחר של התחום.</div></div>`;
@@ -447,7 +459,7 @@ function templatesView(){
     ${settings.aptTypes.map((x,i)=>`<div class="wrow"><span class="nm">${esc(x)}</span><button class="btn danger small" data-deltype="${i}" ${settings.aptTypes.length<=1?'disabled':''}>הסר</button></div>`).join('')}
     <div class="bar" style="margin:8px 0 0;"><input type="text" id="newType" placeholder="סוג דירה חדש" style="width:180px"><button class="btn secondary small" id="addType">+ הוסף</button></div></div>`;
   const phCards = t.phases.map((ph,pi)=>{
-    const itemList = (list, path)=> list.map((x,i)=>`<div class="wrow"><input type="text" value="${esc(x.n)}" data-ren="${path}|${i}"><input type="number" min="0" step="1" value="${x.w}" data-wt="${path}|${i}" title="משקל יחסי">${path.endsWith('|level')?`<select data-scope="${path}|${i}" title="באילו מפלסים הפריט קיים"><option value="" ${!x.scope?'selected':''}>כל המפלסים</option><option value="ground" ${x.scope==='ground'?'selected':''}>רק קרקע</option><option value="upper" ${x.scope==='upper'?'selected':''}>ללא קרקע</option></select>`:''}<button class="btn danger small" data-del="${path}|${i}">הסר</button></div>`).join('');
+    const itemList = (list, path)=> list.map((x,i)=>`<div class="wrow"><input type="text" value="${esc(x.n)}" data-ren="${path}|${i}"><input type="number" min="0" step="1" value="${x.w}" data-wt="${path}|${i}" title="משקל יחסי">${path.endsWith('|level')?`<select data-scope="${path}|${i}" title="באילו מפלסים הפריט קיים"><option value="" ${!x.scope?'selected':''}>כל המפלסים</option><option value="ground" ${x.scope==='ground'?'selected':''}>רק רצפת מבנה</option><option value="upper" ${x.scope==='upper'?'selected':''}>רק קומות (ללא רצפת מבנה)</option></select>`:''}<button class="btn danger small" data-del="${path}|${i}">הסר</button></div>`).join('');
     const addRow = path=> `<div class="bar" style="margin:6px 0 0;"><input type="text" placeholder="פריט חדש" id="new_${path.replace(/\W/g,'_')}" style="width:180px"><button class="btn secondary small" data-add="${path}">+ הוסף</button></div>`;
     let inner;
     if(ph.mode==='level'){
@@ -616,7 +628,7 @@ function openSyncPreview(dl, sourceLabel){
 /* ---------- settings: import structure, basement zones, contractors, assignments, backup */
 function settingsView(){
   const importCard = `<div class="card"><h2>ייבוא מבנה הבניינים (דירות)</h2>
-    <div class="sum" style="margin-bottom:8px;">העמודות בקובץ, בסדר הזה: <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קומת קרקע (בכל בניין נוצר בנוסף מפלס "קרקע" אחד, מתחת לקומות). נקרא הגיליון הראשון.</div>
+    <div class="sum" style="margin-bottom:8px;">העמודות בקובץ, בסדר הזה: <b>מספר בניין · קומה · מספר דירה · טיפוס · חדרים · שטח · מחיר מטרה (כן/לא)</b>. שורת כותרת נדלגת. קומה 0 = קומת קרקע (בכל בניין נוצר בנוסף מפלס "רצפת מבנה" אחד, מתחת לקומות). נקרא הגיליון הראשון.</div>
     <div id="impDrop" style="border:2px dashed var(--navy); border-radius:10px; padding:22px; text-align:center; cursor:pointer; background:#F8FAFD; margin-bottom:10px;">
       <div style="font-size:30px; line-height:1.2;">📂</div><b>גרור לכאן את קובץ ה-Excel, או לחץ כאן לבחירת קובץ</b>
       <div class="sum">xlsx / xls / csv - הייבוא מתבצע מיד אחרי הבחירה</div>
@@ -863,7 +875,7 @@ function importApartments(rows, opts){
       return {id: 'קומה '+f, name: f===0 ? 'קומת קרקע' : 'קומה '+f, comps};
     });
     if(opts.pent && levels.length>1){ const top = levels[levels.length-1], apts = top.comps.filter(c=>c.kind==='apartment'); if(apts.length===1) apts[0].type = 'פנטהאוז'; }
-    levels.unshift({id:GROUND_ID, name:'קרקע', comps:[]});   /* one "קרקע" level per building, below all floors */
+    levels.unshift({id:GROUND_ID, name:GROUND_NAME, comps:[]});   /* one "רצפת מבנה" (קרקע) level per building, below all floors */
     na += levels.reduce((n,l)=>n+l.comps.filter(c=>c.kind==='apartment').length,0);
     const ex = siteById(id);
     if(ex){ ex.levels = levels; } else { sites.push({id, kind:'building', name:'בניין '+b, under:'', levels}); }
