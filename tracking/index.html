@@ -104,6 +104,15 @@
   .itemrow input[type=number]{width:60px; text-align:center;}
   .hist{font-size:12.5px; border:1px solid var(--border); border-radius:8px; max-height:130px; overflow:auto;}
   .hist div{padding:5px 9px; border-bottom:1px solid var(--border);} .hist div:last-child{border:none;}
+  .hist{max-height:200px;}
+  .hrow{display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;}
+  .hrow .hact{white-space:nowrap;} .hrow .hact .btn{padding:2px 8px;}
+  .hedit{display:flex; gap:4px; flex-wrap:wrap; align-items:center;} .hedit input{padding:4px 6px;}
+  #printOut{display:none;}
+  .pr-site h2{margin:0 0 2px; color:var(--navy-dark);} .pr-site h3{margin:14px 0 4px; color:var(--navy-dark);}
+  .pr-sum{border-collapse:collapse; width:100%; margin:8px 0;} .pr-sum th,.pr-sum td{border:1px solid var(--border); padding:4px 10px; font-size:13px; text-align:right;}
+  .pr-ph-h{font-weight:bold; margin:8px 0 3px; font-size:13px;}
+  .pr-trade{margin-bottom:6px;}
   .rem-box{border:1px solid #BFDBFE; border-radius:8px; padding:9px 12px; background:#EFF6FF;}
   .rem-box label.inl{display:flex; gap:6px; align-items:center; margin:0; color:#1E40AF;}
   .pill{display:inline-block; padding:1px 9px; border-radius:10px; font-size:12px; color:#fff;}
@@ -128,7 +137,12 @@
   #driveProblemBar .dp-actions .btn{width:100%; font-size:15px;}
   #driveProblemBar #dpFix{background:#B91C1C;}
   .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:#1F2937; color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:2500; display:none; max-width:90%;}
-  @media print{ #topbar,.bar,.no-print,.chips,button,.toast{display:none !important;} body{background:#fff;} main{margin:0;} .card{box-shadow:none;} }
+  @media print{ #topbar,.bar,.no-print,.chips,button,.toast{display:none !important;} body{background:#fff;} main{margin:0;} .card{box-shadow:none;}
+    body.print-site{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    body.print-site main, body.print-site header, body.print-site nav, body.print-site .ov, body.print-site #popup{display:none !important;}
+    body.print-site #printOut{display:block;}
+    .pr-site{page-break-after:always; break-after:page;} .pr-site:last-child{page-break-after:auto; break-after:auto;}
+    .pr-phase{break-inside:avoid;} }
 </style>
 </head>
 <body>
@@ -153,6 +167,7 @@
   <nav id="tabs"></nav>
 </div>
 <main><div id="view"></div></main>
+<div id="printOut"></div>
 
 <div class="ov" id="editor"><div class="modal" id="editorBox"></div></div>
 <div class="ov" id="popup"><div class="modal" id="popupBox"></div></div>
@@ -193,7 +208,7 @@ const it = (n,w)=>({n, w: w||1});
 function defaultTrades(){
   const mk = (id,name,phases)=>({id,name,phases});
   return [
-    mk('concrete','בטון ובלוקים',[{id:'frame', name:'שלד', weight:100, mode:'level', levelItems:[{...it('רצפה',20), scope:'ground'},{...it('קירות',25), scope:'upper'},{...it('תקרה',50), scope:'upper'},{...it('בלוקים',5), scope:'upper'}]}]),
+    mk('concrete','בטון ובלוקים',[{id:'frame', name:'שלד', weight:100, mode:'level', levelItems:[{...it('רצפה',20), scope:'ground'},{...it('קירות',25), scope:'building'},{...it('תקרה',50), scope:'building'},{...it('בלוקים',5), scope:'building'},{...it('אחוז ביצוע',100), scope:'basement'}]}]),
     mk('plumb','אינסטלציה',[
       {id:'black', name:'שלב שחור', weight:60, mode:'level', levelItems:[it('צנרת ורטיקלית - קירות'),it('צנרת ורטיקלית - תקרה'),it('צנרת הוריזונטלית - קירות'),it('צנרת הוריזונטלית - תקרה')]},
       {id:'white', name:'שלב לבן (אביזרים)', weight:40, mode:'component', lobbyWeight:0.5, compItems:{apartment:[it('אסלה'),it('כיור'),it('ארון אמבט'),it('ברזים')], lobby:[it('ברז שירות'),it('נקודת ניקוז')]}, variants:{}}]),
@@ -225,7 +240,8 @@ function applyData(d){
   settings = (d.settings && typeof d.settings==='object') ? d.settings : {aptTypes:['שוק חופשי','מחיר למשתכן','פנטהאוז']};
   if(!Array.isArray(settings.aptTypes) || !settings.aptTypes.length) settings.aptTypes = ['שוק חופשי','מחיר למשתכן','פנטהאוז'];
   invalidateIndex();
-  if(migrateGroundLevel()){ invalidateIndex(); setTimeout(saveAll, 0); }
+  const mig1 = migrateGroundLevel(), mig2 = migrateConcreteBasement();
+  if(mig1 || mig2){ invalidateIndex(); setTimeout(saveAll, 0); }
   sites.forEach(s=>{ if(s.kind==='building') s.levels.forEach(l=>{ if(l.id===GROUND_ID && !l.comps.length && l.name==='קרקע') l.name = GROUND_NAME; }); });
 }
 
@@ -267,7 +283,35 @@ function currentAssign(sid,tid){ const r = assignRows(sid,tid); return r.length 
    Level-mode items can be limited to some levels: scope '' = every level, 'ground' = only the "קרקע" level (e.g. a floor slab "רצפה"),
    'upper' = every level except "קרקע" (e.g. walls and ceiling, which every floor has, ground floor included). */
 const GROUND_ID = 'קרקע', GROUND_NAME = 'רצפת מבנה';
-function levelItemsFor(ph, lv){ return (ph.levelItems||[]).filter(i=> !i.scope || (i.scope==='ground' ? lv.id===GROUND_ID : lv.id!==GROUND_ID)); }
+/* Extra scopes: 'building' = floors of buildings only (not the basement), 'basement' = basement parts only (e.g. one "אחוז ביצוע" field). */
+const isFloorScope = sc => sc==='upper' || sc==='building';
+function levelItemsFor(ph, lv, s){
+  const base = !!s && s.kind==='basement';
+  return (ph.levelItems||[]).filter(i=>{
+    switch(i.scope){
+      case 'ground': return !base && lv.id===GROUND_ID;
+      case 'upper': return lv.id!==GROUND_ID;
+      case 'building': return !base && lv.id!==GROUND_ID;
+      case 'basement': return base;
+      default: return true;
+    }
+  });
+}
+/* One-time (flag settings.concreteBasement): in the concrete trade the basement has ONE field "אחוז ביצוע" instead of walls / ceiling / blocks. */
+function migrateConcreteBasement(){
+  if(settings.concreteBasement) return false;
+  settings.concreteBasement = true;
+  const t = tradeById('concrete'); if(!t) return false;
+  let changed = false;
+  t.phases.forEach(ph=>{
+    if(ph.mode!=='level') return;
+    const items = ph.levelItems = ph.levelItems || [];
+    if(items.some(i=>i.scope==='basement')) return;
+    items.forEach(i=>{ if(!i.scope || i.scope==='upper') i.scope = 'building'; });
+    items.push({n:'אחוז ביצוע', w:100, scope:'basement'}); changed = true;
+  });
+  return changed;
+}
 /* One-time migration of data saved before the "קרקע" level was separate: the old level 'קרקע' was floor 0 (with apartments).
    It becomes 'קומה 0' / "קומת קרקע", a new empty 'קרקע' level is added below it, progress of 'ground'-scope items stays on 'קרקע',
    the rest moves to 'קומה 0', and level items of templates that had no scope become 'upper' (they belong to floors, not to the ground). */
@@ -301,7 +345,7 @@ function migrateGroundLevel(){
 function unitPct(sid,pk,unit,items,get){ let s = 0, w = 0; items.forEach(i=>{ s += i.w*get(keyOf(sid,pk,unit,i.n)); w += i.w; }); return w ? s/w : null; }
 function levelPct(s,t,ph,lv,get){
   const pk = phaseKey(t,ph);
-  if(ph.mode==='level') return unitPct(s.id,pk,'L:'+lv.id,levelItemsFor(ph,lv),get);
+  if(ph.mode==='level') return unitPct(s.id,pk,'L:'+lv.id,levelItemsFor(ph,lv,s),get);
   let sum = 0, w = 0;
   lv.comps.forEach(c=>{ const items = unitItems(ph,c); if(!items.length) return; const cw = c.kind==='lobby' ? (ph.lobbyWeight==null?1:ph.lobbyWeight) : 1; if(cw<=0) return; sum += cw*unitPct(s.id,pk,c.id,items,get); w += cw; });
   return w ? sum/w : null;
@@ -383,6 +427,68 @@ function overviewView(){
     <div class="note">האחוז במפלס הוא שקלול של פריטי השלב (שלב לפי מפלס) או של הדירות והלובי (שלב לפי מרכיב; משקל הלובי נקבע בנפרד). סה"כ שלב = ממוצע המפלסים. סה"כ תחום = שקלול השלבים לפי המשקלים שהוגדרו ב"תבניות".</div>`;
 }
 
+/* ---------- month colours: a cell / tile is tinted by the month of its latest update (toggle: by month / by percent) */
+const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const MONTH_COLORS = ['#C9C9F2','#F2C6DE','#F6CBB0','#F7E39B','#E8D7B5','#F2B6B6','#FAC784','#C9B5E8','#AEDCF5','#B5E2A0','#D4C4A8','#B7C6D9'];
+let colorMode = 'month'; try{ if(localStorage.getItem('trk.colorMode')==='pct') colorMode = 'pct'; }catch(e){}
+let usedMonths = new Set();
+const monthLabel = ym => HEB_MONTHS[+ym.slice(5,7)-1] + ' ' + ym.slice(0,4);
+function latestMonth(keys){ let d = ''; keys.forEach(k=>{ const a = index().get(k); if(a && a.length){ const x = a[a.length-1].date; if(x>d) d = x; } }); return d ? d.slice(0,7) : ''; }
+function tintAttr(keys, p){
+  if(colorMode!=='month' || !(p>0)) return '';
+  const ym = latestMonth(keys); if(!ym) return '';
+  usedMonths.add(ym); return ` style="background:${MONTH_COLORS[+ym.slice(5,7)-1]};"`;
+}
+function monthLegendHtml(){
+  if(colorMode!=='month' || !usedMonths.size) return '';
+  return `<div class="legend"><span>צבע לפי חודש הביצוע האחרון:</span>${[...usedMonths].sort().map(ym=>`<span><i style="background:${MONTH_COLORS[+ym.slice(5,7)-1]};"></i>${monthLabel(ym)}</span>`).join('')}</div>`;
+}
+
+/* ---------- boards (shared by the screen and the per-building printout; print = static spans instead of buttons) */
+/* Level-mode phase: columns are the items that exist on this site. Items limited to the ground ("רצפה") have no column: they are one
+   shared field in the bottom "רצפת מבנה" row, spanning the columns of the floor-only items. */
+function levelBoardHtml(s,t,ph,print){
+  const pk = phaseKey(t,ph);
+  const applicable = i => s.levels.some(lv=>levelItemsFor(ph,lv,s).includes(i));
+  const cols = (ph.levelItems||[]).filter(i=> i.scope!=='ground' && applicable(i)), groundItems = (ph.levelItems||[]).filter(i=> i.scope==='ground' && applicable(i));
+  const floorCount = cols.filter(i=>isFloorScope(i.scope)).length;
+  const cellBtn = (unit, i, label)=>{
+    const k = keyOf(s.id,pk,unit,i.n), p = curGet(k), tint = tintAttr([k],p), txt = `${label?esc(label)+' ':''}${pctTxt(p)}`;
+    if(print) return `<span class="cell ${bandOf(p)}"${tint}>${txt}</span>`;
+    const r = reminders.find(x=>x.key===k && x.status==='open'), bell = r ? '<span class="bell">🔔</span>' : '';
+    return `<button class="cell ${bandOf(p)}"${tint} data-cell="${esc(k)}">${bell}${txt}</button>`;
+  };
+  const rows = levelsTopDown(s).filter(lv=> lv.id!==GROUND_ID || levelItemsFor(ph,lv,s).length).map(lv=>{
+    const unit = 'L:'+lv.id, lp = levelPct(s,t,ph,lv,curGet), here = levelItemsFor(ph,lv,s);
+    let cells = '', merged = false;
+    if(lv.id===GROUND_ID){
+      cells = cols.map(i=>{
+        if(isFloorScope(i.scope)){ if(merged) return ''; merged = true;
+          return `<td colspan="${floorCount}"><div style="display:flex; gap:6px;">${groundItems.map(g=> `<div style="flex:1;">${cellBtn(unit,g,groundItems.length>1?g.n:'')}</div>`).join('')}</div></td>`; }
+        return here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>'; }).join('');
+      if(!cols.length) cells = `<td>${groundItems.map(g=>cellBtn(unit,g,groundItems.length>1?g.n:'')).join('')}</td>`;
+    } else cells = cols.map(i=> here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>').join('');
+    return `<tr><td class="lvl">${esc(lv.name)}</td>${cells}<td class="lvlpct">${fp(lp)}</td></tr>`;
+  }).join('');
+  return `<div class="scroll"><table><thead><tr><th>מפלס</th>${cols.map(i=>`<th>${esc(i.n)}</th>`).join('')}${cols.length?'':'<th>פריט</th>'}<th>% מפלס</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+/* Component-mode phase: one row per level with a tile per apartment / lobby */
+function facadeRowsHtml(s,t,ph,print){
+  const pk = phaseKey(t,ph);
+  return levelsTopDown(s).filter(lv=>lv.comps.length).map(lv=>{
+    const lp = levelPct(s,t,ph,lv,curGet);
+    const tiles = lv.comps.map(c=>{
+      const items = unitItems(ph,c), lw = ph.lobbyWeight==null?1:ph.lobbyWeight, lob = c.kind==='lobby' ? 'lobby' : '';
+      if(!items.length || (c.kind==='lobby' && lw<=0)) return `<div class="tile na ${lob}"><div class="tn">${esc(c.name)}</div><div class="tt">אין פריטים</div></div>`;
+      const p = unitPct(s.id,pk,c.id,items,curGet), tint = tintAttr(items.map(i=>keyOf(s.id,pk,c.id,i.n)), p);
+      const inner = `<div class="tn">${esc(c.name)}</div><div class="tp">${pctTxt(p)}</div>${c.kind==='apartment'?`<div class="tt">${esc(c.rooms||'')}${c.rooms?" חד' · ":''}${c.lay?'טיפוס '+esc(c.lay):''}</div><span class="typebadge ${typeCls(c.type)}">${esc(c.type)}</span>`:'<div class="tt">שטח משותף</div>'}`;
+      if(print) return `<div class="tile ${bandOf(p)} ${lob}"${tint}>${inner}</div>`;
+      return `<button class="tile ${bandOf(p)} ${lob} ${picked.has(c.id)?'picked':''}"${tint} data-comp="${esc(c.id)}">${inner}</button>`;
+    }).join('');
+    return `<div class="frow ${selectMode&&!print?'selectable':''}"><div class="fl" ${print?'':`data-picklevel="${esc(lv.id)}"`}>${esc(lv.name)}<span class="pc">${fp(lp)}</span></div><div class="tiles">${tiles}</div></div>`;
+  }).join('');
+}
+
 /* ---------- detailed tracking */
 function trackView(){
   if(!sites.length) return onboardingCard();
@@ -396,54 +502,28 @@ function trackView(){
   const head = `
     <div class="chips"><span class="lbl">תחום:</span>${trades.map(x=>`<button class="chip ${x.id===t.id?'on':''}" data-trade="${x.id}">${esc(x.name)}</button>`).join('')}</div>
     <div class="chips"><span class="lbl">שלב:</span>${phaseChips}</div>
-    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div><button class="btn secondary small" data-editlevels="${s.id}" title="שינוי שם, הוספה והסרה של מפלסים">✏️ ערוך מפלסים</button>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
+    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div><button class="btn secondary small" data-editlevels="${s.id}" title="שינוי שם, הוספה והסרה של מפלסים">✏️ ערוך מפלסים</button><button class="btn secondary small" id="printBtn" title="הדפסת מבנה עם ההתקדמות שלו">🖨 הדפסה לפי מבנה</button>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
+    <div class="chips"><span class="lbl">צבע לפי:</span><button class="chip ${colorMode==='month'?'on':''}" data-colormode="month">חודש הביצוע</button><button class="chip ${colorMode==='pct'?'on':''}" data-colormode="pct">אחוז ביצוע</button></div>
     <div class="curcon">${conLine}</div>`;
+  usedMonths = new Set();
   let body;
   if(ph.mode==='level'){
-    /* Columns are the floor items. Items limited to the ground ("רצפה") have no column: they are one shared field in the
-       bottom "רצפת מבנה" row, spanning the columns of the floor-only items (walls, ceiling, blocks...). */
-    const cols = (ph.levelItems||[]).filter(i=> i.scope!=='ground'), groundItems = (ph.levelItems||[]).filter(i=> i.scope==='ground');
-    const upperCount = cols.filter(i=>i.scope==='upper').length;
-    const cellBtn = (unit, i, label)=>{ const k = keyOf(s.id,pk,unit,i.n), p = curGet(k), r = reminders.find(x=>x.key===k && x.status==='open'); const bell = r ? '<span class="bell">🔔</span>' : '';
-      return `<button class="cell ${bandOf(p)}" data-cell="${esc(k)}">${bell}${label?esc(label)+' ':''}${pctTxt(p)}</button>`; };
-    const rows = levelsTopDown(s).filter(lv=> lv.id!==GROUND_ID || levelItemsFor(ph,lv).length).map(lv=>{
-      const unit = 'L:'+lv.id, lp = levelPct(s,t,ph,lv,curGet);
-      const here = levelItemsFor(ph,lv);
-      let cells = '', merged = false;
-      if(lv.id===GROUND_ID){
-        cells = cols.map(i=>{
-          if(i.scope==='upper'){ if(merged) return ''; merged = true;
-            return `<td colspan="${upperCount}"><div style="display:flex; gap:6px;">${groundItems.map(g=> `<div style="flex:1;">${cellBtn(unit,g,groundItems.length>1?g.n:'')}</div>`).join('')}</div></td>`; }
-          return here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>'; }).join('');
-        if(!cols.length) cells = `<td>${groundItems.map(g=>cellBtn(unit,g,groundItems.length>1?g.n:'')).join('')}</td>`;
-      } else cells = cols.map(i=> here.includes(i) ? `<td>${cellBtn(unit,i)}</td>` : '<td class="na">—</td>').join('');
-      return `<tr><td class="lvl">${esc(lv.name)}</td>${cells}<td class="lvlpct">${fp(lp)}</td></tr>`;
-    }).join('');
+    const groundItems = (ph.levelItems||[]).filter(i=> i.scope==='ground' && s.levels.some(lv=>levelItemsFor(ph,lv,s).includes(i)));
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">${fp(phasePct(s,t,ph,curGet))}</span></div>
-      <div class="scroll"><table><thead><tr><th>מפלס</th>${cols.map(i=>`<th>${esc(i.n)}</th>`).join('')}${cols.length?'':'<th>פריט</th>'}<th>% מפלס</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="sum" style="margin-top:6px;">שלב לפי מפלס - לחיצה על תא פותחת עדכון (אחוז, תאריך, הערה ותזכורת). ${groundItems.length?`בשורה "רצפת מבנה" (למטה) מזינים את ${groundItems.map(g=>esc(g.n)).join(', ')} - שדה משותף לכל הבניין.`:''}</div></div>`;
+      <div class="bar" style="margin:0 0 8px;"><button class="btn secondary small" id="editCols" title="הוספה, הסרה ושינוי כותרות של עמודות השלב">✏️ ערוך עמודות</button></div>
+      ${levelBoardHtml(s,t,ph,false)}
+      <div class="sum" style="margin-top:6px;">שלב לפי מפלס - לחיצה על תא פותחת עדכון (אחוז, תאריך, הערה, תזכורת והיסטוריית עדכונים). ${groundItems.length?`בשורה "רצפת מבנה" (למטה) מזינים את ${groundItems.map(g=>esc(g.n)).join(', ')} - שדה משותף לכל הבניין.`:''}</div>${monthLegendHtml()}</div>`;
   } else if(!s.levels.some(l=>l.comps.length)){
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">—</span></div>
       <div class="empty">השלב "${esc(ph.name)}" מתנהל לפי דירות ולובי, ולכן אינו חל על ${esc(s.name)} (מרחב ללא דירות). בחר שלב אחר של התחום.</div></div>`;
   } else {
-    const rows = levelsTopDown(s).filter(lv=>lv.comps.length).map(lv=>{
-      const lp = levelPct(s,t,ph,lv,curGet);
-      const tiles = lv.comps.map(c=>{
-        const items = unitItems(ph,c);
-        const lw = ph.lobbyWeight==null?1:ph.lobbyWeight;
-        if(!items.length || (c.kind==='lobby' && lw<=0)) return `<div class="tile na ${c.kind==='lobby'?'lobby':''}"><div class="tn">${esc(c.name)}</div><div class="tt">אין פריטים</div></div>`;
-        const p = unitPct(s.id,pk,c.id,items,curGet);
-        return `<button class="tile ${bandOf(p)} ${c.kind==='lobby'?'lobby':''} ${picked.has(c.id)?'picked':''}" data-comp="${esc(c.id)}"><div class="tn">${esc(c.name)}</div><div class="tp">${pctTxt(p)}</div>${c.kind==='apartment'?`<div class="tt">${esc(c.rooms||'')}${c.rooms?" חד' · ":''}${c.lay?'טיפוס '+esc(c.lay):''}</div><span class="typebadge ${typeCls(c.type)}">${esc(c.type)}</span>`:'<div class="tt">שטח משותף</div>'}</button>`;
-      }).join('');
-      return `<div class="frow ${selectMode?'selectable':''}"><div class="fl" data-picklevel="${esc(lv.id)}">${esc(lv.name)}<span class="pc">${fp(lp)}</span></div><div class="tiles">${tiles}</div></div>`;
-    }).join('');
     body = `<div class="card"><div class="board-head"><span class="name">${esc(s.name)} · ${esc(ph.name)}</span><span class="total">${fp(phasePct(s,t,ph,curGet))}</span></div>
       <div class="bar"><button class="btn secondary small ${selectMode?'on':''}" id="selToggle">${selectMode?'✔ מצב בחירה מרובה פעיל':'בחירה מרובה'}</button>
         <button class="btn small" id="bulkBtn" ${picked.size?'':'disabled'}>עדכון מרובה (${picked.size})</button>
         <button class="btn secondary small" id="clearPick" ${picked.size?'':'disabled'}>נקה בחירה</button>
         <span class="sum">${selectMode?'לחיצה על דירה או לובי מוסיפה/מסירה מהבחירה; לחיצה על שם קומה בוחרת את כל הקומה':'לחיצה על דירה פותחת את הפריטים שלה'}</span></div>
-      <div class="facade">${rows}</div>
-      <div class="legend">${settings.aptTypes.map(ty=>`<span><span class="typebadge ${typeCls(ty)}">${esc(ty)}</span></span>`).join('')}<span>מסגרת מקווקוות = לובי · משקל לובי בשלב: ${ph.lobbyWeight==null?1:ph.lobbyWeight} (דירה = 1)</span></div></div>`;
+      <div class="facade">${facadeRowsHtml(s,t,ph,false)}</div>
+      <div class="legend">${settings.aptTypes.map(ty=>`<span><span class="typebadge ${typeCls(ty)}">${esc(ty)}</span></span>`).join('')}<span>מסגרת מקווקוות = לובי · משקל לובי בשלב: ${ph.lobbyWeight==null?1:ph.lobbyWeight} (דירה = 1)</span></div>${monthLegendHtml()}</div>`;
   }
   return head + body;
 }
@@ -459,7 +539,7 @@ function templatesView(){
     ${settings.aptTypes.map((x,i)=>`<div class="wrow"><span class="nm">${esc(x)}</span><button class="btn danger small" data-deltype="${i}" ${settings.aptTypes.length<=1?'disabled':''}>הסר</button></div>`).join('')}
     <div class="bar" style="margin:8px 0 0;"><input type="text" id="newType" placeholder="סוג דירה חדש" style="width:180px"><button class="btn secondary small" id="addType">+ הוסף</button></div></div>`;
   const phCards = t.phases.map((ph,pi)=>{
-    const itemList = (list, path)=> list.map((x,i)=>`<div class="wrow"><input type="text" value="${esc(x.n)}" data-ren="${path}|${i}"><input type="number" min="0" step="1" value="${x.w}" data-wt="${path}|${i}" title="משקל יחסי">${path.endsWith('|level')?`<select data-scope="${path}|${i}" title="באילו מפלסים הפריט קיים"><option value="" ${!x.scope?'selected':''}>כל המפלסים</option><option value="ground" ${x.scope==='ground'?'selected':''}>רק רצפת מבנה</option><option value="upper" ${x.scope==='upper'?'selected':''}>רק קומות (ללא רצפת מבנה)</option></select>`:''}<button class="btn danger small" data-del="${path}|${i}">הסר</button></div>`).join('');
+    const itemList = (list, path)=> list.map((x,i)=>`<div class="wrow"><input type="text" value="${esc(x.n)}" data-ren="${path}|${i}"><input type="number" min="0" step="1" value="${x.w}" data-wt="${path}|${i}" title="משקל יחסי">${path.endsWith('|level')?`<select data-scope="${path}|${i}" title="באילו מפלסים הפריט קיים"><option value="" ${!x.scope?'selected':''}>כל המפלסים</option><option value="ground" ${x.scope==='ground'?'selected':''}>רק רצפת מבנה</option><option value="upper" ${x.scope==='upper'?'selected':''}>ללא רצפת מבנה (קומות ומרתף)</option><option value="building" ${x.scope==='building'?'selected':''}>קומות בבניין בלבד</option><option value="basement" ${x.scope==='basement'?'selected':''}>מרתף בלבד</option></select>`:''}<button class="btn danger small" data-del="${path}|${i}">הסר</button></div>`).join('');
     const addRow = path=> `<div class="bar" style="margin:6px 0 0;"><input type="text" placeholder="פריט חדש" id="new_${path.replace(/\W/g,'_')}" style="width:180px"><button class="btn secondary small" data-add="${path}">+ הוסף</button></div>`;
     let inner;
     if(ph.mode==='level'){
@@ -785,11 +865,43 @@ function snooze(id){ const r = reminders.find(x=>x.id===id); if(!r) return; r.sn
 const modal = html=>{ document.getElementById('editorBox').innerHTML = html; document.getElementById('editor').classList.add('on'); };
 const closeModal = ()=> document.getElementById('editor').classList.remove('on');
 
+/* Update history of one or several keys, each row editable (date / percent / note) or deletable. Editing rewrites the entry in place
+   (the contractor is re-derived from the new date), so the cell shows the latest entry by date as before. */
+function historyHtml(keys, showItem){
+  const list = entries.filter(e=>keys.includes(e.key)).sort((a,b)=> b.date.localeCompare(a.date) || (b.at||'').localeCompare(a.at||''));
+  if(!list.length) return '<div>אין עדיין עדכונים</div>';
+  return list.map(h=>`<div class="hrow"><span><b>${fmt(h.date)}</b>${showItem?' · '+esc(h.key.split('|')[3]):''} · ${h.pct}% · ${esc(contractorName(h.contractorId))}${h.note?' · '+esc(h.note):''}${h.by?` <span class="sum">(${esc(h.by)})</span>`:''}${h.editedAt?' <span class="sum">· נערך</span>':''}</span>
+    <span class="hact"><button class="btn secondary small" data-hedit="${h.id}" title="עריכת העדכון">✏️</button><button class="btn danger small" data-hdel="${h.id}" title="מחיקת העדכון">🗑</button></span></div>`).join('');
+}
+function wireHistory(reopen){
+  const box = document.getElementById('editorBox');
+  box.querySelectorAll('[data-hdel]').forEach(b=> b.onclick = ()=>{
+    const h = entries.find(e=>e.id===b.dataset.hdel); if(!h) return;
+    if(!confirm(`למחוק את העדכון מ-${fmt(h.date)} (${h.pct}%)?`)) return;
+    entries = entries.filter(e=>e.id!==h.id); invalidateIndex(); saveAll(); render(); reopen();
+  });
+  box.querySelectorAll('[data-hedit]').forEach(b=> b.onclick = ()=>{
+    const h = entries.find(e=>e.id===b.dataset.hedit); if(!h) return;
+    const row = b.closest('.hrow');
+    row.innerHTML = `<span class="hedit"><input type="date" value="${h.date}" data-f="d"><input type="number" min="0" max="100" step="5" value="${h.pct}" data-f="p" style="width:70px">%<input type="text" value="${esc(h.note||'')}" data-f="n" placeholder="הערה"></span>
+      <span class="hact"><button class="btn small" data-hsave>שמור</button><button class="btn secondary small" data-hcancel>ביטול</button></span>`;
+    row.querySelector('[data-hcancel]').onclick = reopen;
+    row.querySelector('[data-hsave]').onclick = ()=>{
+      const d = row.querySelector('[data-f=d]').value, p = Math.max(0, Math.min(100, +row.querySelector('[data-f=p]').value||0));
+      if(!d){ toast('נא למלא תאריך'); return; }
+      const [sid,pk] = h.key.split('|'), tid = pk.split('.')[0];
+      h.date = d; h.pct = p; h.note = row.querySelector('[data-f=n]').value.trim(); h.contractorId = contractorAt(sid,tid,d);
+      h.editedBy = (me&&me.name)||''; h.editedAt = new Date().toISOString();
+      invalidateIndex(); saveAll(); render(); reopen();
+    };
+  });
+}
+
 /* one level-mode cell (with reminder) */
 function openCell(k){
   const [sid,pk,unit,item] = k.split('|'), [tid] = pk.split('.');
   const p = curGet(k), rem = reminders.find(r=>r.key===k && r.status==='open');
-  const hist = entriesOf(k).slice().reverse().map(h=>`<div><b>${fmt(h.date)}</b> · ${h.pct}% · ${esc(contractorName(h.contractorId))}${h.note?' · '+esc(h.note):''}${h.by?` <span class="sum">(${esc(h.by)})</span>`:''}</div>`).join('') || '<div>אין עדיין עדכונים</div>';
+  const hist = historyHtml([k], false);
   modal(`<h2>${esc(item)}</h2><div class="sub">${esc(describeKey(k))} · כרגע ${Math.round(p)}% · קבלן מבצע: <b id="edCon"></b></div>
     <div class="f"><label>אחוז ביצוע: <b id="pv">${Math.round(p)}%</b></label><input type="range" id="edPct" min="0" max="100" step="5" value="${Math.round(p)}" style="width:100%"></div>
     <div class="row2"><div class="f"><label>תאריך</label><input type="date" id="edDate" value="${todayStr()}"></div><div class="f"><label>הערות</label><input type="text" id="edNote"></div></div>
@@ -802,6 +914,7 @@ function openCell(k){
   const upd = ()=>{ document.getElementById('pv').textContent = document.getElementById('edPct').value+'%'; const d = document.getElementById('edDate').value, n = +document.getElementById('edRemDays').value||0;
     document.getElementById('remDue').textContent = d ? fmt(addDays(d,n)) : ''; document.getElementById('edCon').textContent = contractorName(contractorAt(sid,tid,d||todayStr())); };
   ['edPct','edDate','edRemDays'].forEach(id=> document.getElementById(id).oninput = upd); upd();
+  wireHistory(()=> openCell(k));
   document.getElementById('edRem').onchange = e=> document.getElementById('remFields').style.display = e.target.checked ? '' : 'none';
   document.getElementById('edCancel').onclick = closeModal;
   document.getElementById('edSave').onclick = ()=>{
@@ -825,8 +938,10 @@ function openComp(compId){
     <input type="range" min="0" max="100" step="5" value="${curGet(keyOf(s.id,pk,compId,i.n))}" data-r="${idx}"><span><input type="number" min="0" max="100" step="5" value="${curGet(keyOf(s.id,pk,compId,i.n))}" data-n="${idx}"></span></div>`).join('');
   modal(`<h2>${esc(comp.name)}${comp.kind==='apartment'?` <span class="typebadge ${typeCls(comp.type)}">${esc(comp.type)}</span>`:''}</h2><div class="sub">${comp.kind==='apartment'?`${esc(comp.rooms||'')}${comp.rooms?' חדרים · ':''}${comp.area?esc(comp.area)+' מ"ר · ':''}${comp.lay?'טיפוס '+esc(comp.lay):''}<br>`:''}${esc(s.name)} · ${esc(lv.name)} · ${esc(t.name)} (${esc(ph.name)}) · קבלן מבצע: <b id="edCon"></b></div>
     ${rows||'<div class="empty">אין פריטים לרכיב זה.</div>'}<div class="row2" style="margin-top:10px;"><div class="f"><label>תאריך</label><input type="date" id="edDate" value="${todayStr()}"></div><div class="f"><label>הערות</label><input type="text" id="edNote"></div></div>
+    <h3>היסטוריית עדכונים</h3><div class="hist">${historyHtml(items.map(i=>keyOf(s.id,pk,compId,i.n)), true)}</div>
     <div class="right" style="margin-top:8px;"><button class="btn" id="edSave">שמור</button><button class="btn secondary" id="edCancel">סגור</button></div>`);
   const sync = ()=>{ document.getElementById('edCon').textContent = contractorName(contractorAt(s.id,t.id,document.getElementById('edDate').value||todayStr())); }; document.getElementById('edDate').oninput = sync; sync();
+  wireHistory(()=> openComp(compId));
   document.querySelectorAll('#editorBox [data-r]').forEach(r=> r.oninput = ()=>{ document.querySelector(`#editorBox [data-n="${r.dataset.r}"]`).value = r.value; });
   document.querySelectorAll('#editorBox [data-n]').forEach(n=> n.oninput = ()=>{ document.querySelector(`#editorBox [data-r="${n.dataset.n}"]`).value = n.value; });
   document.getElementById('edCancel').onclick = closeModal;
@@ -938,6 +1053,100 @@ function addZone(name, under, levelNames){
   sites.push({id, kind:'basement', name:cleanName(name)||'מרתף', under:cleanName(under), levels: levelNames.map(n=>({id:cleanName(n), name:cleanName(n), comps:[]}))});
 }
 
+/* ---------- renaming an item must carry its recorded progress / reminders along (keys contain the item name) */
+function renameItemKeys(pk, map, unitOk){
+  if(!map.size) return;
+  const re = k=>{ const p = String(k||'').split('|'); return (p.length===4 && p[1]===pk && map.has(p[3]) && unitOk(p[0],p[2])) ? [p[0],p[1],p[2],map.get(p[3])].join('|') : null; };
+  entries.forEach(e=>{ const k = re(e.key); if(k) e.key = k; });
+  reminders.forEach(r=>{ const k = re(r.key); if(k) r.key = k; });
+  invalidateIndex();
+}
+function compMap(){ const m = new Map(); sites.forEach(s=>s.levels.forEach(l=>l.comps.forEach(c=>m.set(c.id,c)))); return m; }
+/* which units a template list ("level" | "apartment" | "lobby" | "var" + apartment type) applies to */
+function unitFilterFor(kind, ty){
+  if(kind==='level') return (sid,u)=> u.startsWith('L:');
+  const cm = compMap();
+  return (sid,u)=>{ const c = cm.get(u); return !!c && (kind==='var' ? (c.kind==='apartment' && c.type===ty) : c.kind===kind); };
+}
+
+/* ---------- edit the columns (items) of a level-mode phase straight from the board */
+const SCOPE_OPTS = [['','כל המפלסים'],['ground','רק רצפת מבנה'],['upper','ללא רצפת מבנה (קומות ומרתף)'],['building','קומות בבניין בלבד'],['basement','מרתף בלבד']];
+function openColumnsEditor(tid, pid, siteKind){
+  const t = tradeById(tid), ph = t && t.phases.find(p=>p.id===pid); if(!ph) return;
+  const pk = phaseKey(t,ph);
+  let w = (ph.levelItems||[]).map(i=>({orig:i.n, n:i.n, w:i.w, scope:i.scope||''}));
+  const draw = ()=>{
+    modal(`<h2>עמודות - ${esc(t.name)} · ${esc(ph.name)}</h2><div class="sub">כותרת העמודה, משקל יחסי ובאילו מפלסים היא קיימת. שינוי כותרת לא פוגע בהתקדמות שנרשמה; הסרת עמודה מסתירה את ההתקדמות שנרשמה בה.</div>
+      ${w.map((x,i)=>`<div class="wrow" style="gap:6px; margin-bottom:5px; flex-wrap:wrap;">
+        <button class="btn secondary small" data-cup="${i}" ${i?'':'disabled'} title="הזז">▲</button><button class="btn secondary small" data-cdn="${i}" ${i<w.length-1?'':'disabled'} title="הזז">▼</button>
+        <input type="text" value="${esc(x.n)}" data-cn="${i}" style="flex:1; min-width:110px;">
+        <input type="number" min="0" step="1" value="${x.w}" data-cw="${i}" title="משקל יחסי" style="width:64px;">
+        <select data-cs="${i}" title="באילו מפלסים העמודה קיימת">${SCOPE_OPTS.map(([v,l])=>`<option value="${v}" ${x.scope===v?'selected':''}>${l}</option>`).join('')}</select>
+        <button class="btn danger small" data-cdel="${i}" ${w.length<=1?'disabled':''}>הסר</button></div>`).join('')}
+      <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="colAdd">+ הוסף עמודה</button></div>
+      <div class="right" style="margin-top:12px;"><button class="btn" id="colSave">שמור</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+    const q = sel => [...document.querySelectorAll('#editorBox '+sel)];
+    q('[data-cn]').forEach(el=> el.oninput = ()=>{ w[+el.dataset.cn].n = el.value; });
+    q('[data-cw]').forEach(el=> el.oninput = ()=>{ w[+el.dataset.cw].w = Math.max(0, +el.value||0); });
+    q('[data-cs]').forEach(el=> el.onchange = ()=>{ w[+el.dataset.cs].scope = el.value; });
+    q('[data-cup]').forEach(b=> b.onclick = ()=>{ const i = +b.dataset.cup; [w[i-1], w[i]] = [w[i], w[i-1]]; draw(); });
+    q('[data-cdn]').forEach(b=> b.onclick = ()=>{ const i = +b.dataset.cdn; [w[i+1], w[i]] = [w[i], w[i+1]]; draw(); });
+    q('[data-cdel]').forEach(b=> b.onclick = ()=>{ w.splice(+b.dataset.cdel, 1); draw(); });
+    document.getElementById('colAdd').onclick = ()=>{ w.push({orig:null, n:'עמודה חדשה', w:1, scope: siteKind==='basement' ? 'basement' : 'building'}); draw(); };
+    document.getElementById('edCancel').onclick = closeModal;
+    document.getElementById('colSave').onclick = ()=>{
+      w.forEach(x=> x.n = cleanName(x.n));
+      if(!w.length){ toast('נדרשת לפחות עמודה אחת'); return; }
+      if(w.some(x=>!x.n)){ toast('נא למלא כותרת לכל עמודה'); return; }
+      if(new Set(w.map(x=>x.n)).size !== w.length){ toast('כותרות העמודות חייבות להיות שונות'); return; }
+      const ren = new Map(); w.forEach(x=>{ if(x.orig && x.orig!==x.n) ren.set(x.orig, x.n); });
+      renameItemKeys(pk, ren, unitFilterFor('level'));
+      ph.levelItems = w.map(x=>{ const o = {n:x.n, w:x.w}; if(x.scope) o.scope = x.scope; return o; });
+      saveAll(); closeModal(); render(); toast('העמודות עודכנו');
+    };
+  };
+  draw();
+}
+
+/* ---------- printing: every building (or basement part) on its own page with its contractors and progress */
+function printSiteHtml(s, tradeList){
+  usedMonths = new Set();
+  const conOf = t => { const a = currentAssign(s.id,t.id); return a ? contractorName(a.contractorId) : 'לא הוקצה קבלן'; };
+  const sections = tradeList.map(t=>{
+    const phases = t.phases.map(ph=>{
+      let inner;
+      if(ph.mode==='level') inner = levelBoardHtml(s,t,ph,true);
+      else if(!s.levels.some(l=>l.comps.length)) return '';
+      else inner = `<div class="facade">${facadeRowsHtml(s,t,ph,true)}</div>`;
+      return `<div class="pr-phase"><div class="pr-ph-h">${esc(ph.name)} - ${fp(phasePct(s,t,ph,curGet))}</div>${inner}</div>`;
+    }).join('');
+    return phases ? `<div class="pr-trade"><h3>${esc(t.name)} · קבלן מבצע: ${esc(conOf(t))} · ${fp(tradePct(s,t,curGet))}</h3>${phases}</div>` : '';
+  }).join('');
+  const sum = tradeList.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(conOf(t))}</td><td>${fp(tradePct(s,t,curGet))}</td></tr>`).join('');
+  return `<div class="pr-site"><h2>מעקב ביצוע - ${esc(s.name)}</h2><div class="sum">מצב נכון ל-${fmt(todayStr())}${s.under?` · מתחת ל${esc(s.under)}`:''}</div>
+    <table class="pr-sum"><thead><tr><th>תחום</th><th>קבלן מבצע</th><th>התקדמות</th></tr></thead><tbody>${sum}</tbody></table>${sections}${monthLegendHtml()}</div>`;
+}
+function openPrintDialog(){
+  const cs = siteById(curS), ct = tradeById(curT);
+  modal(`<h2>הדפסה לפי מבנה</h2><div class="sub">כל מבנה מודפס בעמוד נפרד: הקבלן המבצע וההתקדמות של כל תחום ושלב.</div>
+    <div class="f"><label>מבנים</label><select id="prSites"><option value="cur">${esc(cs.name)} בלבד</option><option value="bld">כל הבניינים (עמוד לכל בניין)</option><option value="all">כל הבניינים וחלקי המרתף</option></select></div>
+    <div class="f"><label>תחומים</label><select id="prTrades"><option value="all">כל התחומים</option><option value="cur">${esc(ct?ct.name:'')} בלבד</option></select></div>
+    <div class="right" style="margin-top:10px;"><button class="btn" id="prGo">🖨 הדפס</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('prGo').onclick = ()=>{
+    const v = document.getElementById('prSites').value, tv = document.getElementById('prTrades').value;
+    const list = v==='cur' ? [cs] : v==='bld' ? sites.filter(s=>s.kind==='building') : sites.slice();
+    const tl = tv==='cur' && ct ? [ct] : trades;
+    if(!list.length){ toast('אין מבנים להדפסה'); return; }
+    document.getElementById('printOut').innerHTML = list.map(s=>printSiteHtml(s,tl)).join('');
+    closeModal();
+    const done = ()=>{ document.body.classList.remove('print-site'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    document.body.classList.add('print-site');
+    window.print();
+  };
+}
+
 /* ============================================================== wiring */
 function pathList(t, path){ const [pi,kind,ty] = path.split('|'), ph = t.phases[+pi];
   if(kind==='level') return (ph.levelItems = ph.levelItems || []);
@@ -961,6 +1170,9 @@ function wire(){
   const fcb = document.getElementById('firstConBtn'); if(fcb) fcb.onclick = ()=>{ const cid = document.getElementById('firstCon').value; if(!cid){ toast('נא לבחור קבלן'); return; }
     assignments.push({id:uid('as'), siteId:curS, tradeId:curT, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}); saveAll(); render(); };
   on('[data-cell]', el=> el.onclick = ()=> openCell(el.dataset.cell));
+  on('[data-colormode]', el=> el.onclick = ()=>{ colorMode = el.dataset.colormode; try{ localStorage.setItem('trk.colorMode', colorMode); }catch(e){} render(); });
+  const pb = document.getElementById('printBtn'); if(pb) pb.onclick = openPrintDialog;
+  const ec = document.getElementById('editCols'); if(ec) ec.onclick = ()=>{ const s = siteById(curS); openColumnsEditor(curT, curP, s && s.kind); };
   on('[data-comp]', el=> el.onclick = ()=>{ if(selectMode){ const id = el.dataset.comp; picked.has(id) ? picked.delete(id) : picked.add(id); render(); } else openComp(el.dataset.comp); });
   on('[data-picklevel]', el=> el.onclick = ()=>{ if(!selectMode) return; const s = siteById(curS), t = tradeById(curT), ph = phaseOf(t,curP), lv = s.levels.find(l=>l.id===el.dataset.picklevel);
     const lw = ph.lobbyWeight==null?1:ph.lobbyWeight; const ids = lv.comps.filter(c=> unitItems(ph,c).length && !(c.kind==='lobby' && lw<=0)).map(c=>c.id); const all = ids.every(i=>picked.has(i)); ids.forEach(i=> all ? picked.delete(i) : picked.add(i)); render(); });
@@ -976,7 +1188,8 @@ function wire(){
     if(confirm(`למחוק את התחום "${t.name}"?${n?`\nנרשמו בו ${n} עדכוני התקדמות - הם יישארו בקובץ אך לא יוצגו.`:''}`)){ trades = trades.filter(x=>x.id!==t.id); assignments = assignments.filter(a=>a.tradeId!==t.id); setupT = ''; saveAll(); render(); } };
   const ap = document.getElementById('addPhase'); if(ap && t) ap.onclick = ()=>{ const n = cleanName(document.getElementById('newPhase').value); if(!n) return; t.phases.push({id:uid('ph'), name:n, weight:20, mode:'level', levelItems:[it('פריט 1')]}); saveAll(); render(); };
   if(t){
-    on('[data-ren]', el=> el.onchange = ()=>{ const [pi,kind,a,b2] = el.dataset.ren.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; const l = pathList(t,path); l[idx].n = cleanName(el.value) || l[idx].n; saveAll(); render(); });
+    on('[data-ren]', el=> el.onchange = ()=>{ const [pi,kind,a,b2] = el.dataset.ren.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; const l = pathList(t,path), old = l[idx].n, nn = cleanName(el.value) || old; l[idx].n = nn;
+      renameItemKeys(phaseKey(t,t.phases[+pi]), new Map([[old,nn]]), unitFilterFor(kind, kind==='var' ? a : undefined)); saveAll(); render(); });
     on('[data-wt]', el=> el.onchange = ()=>{ const [pi,kind,a,b2] = el.dataset.wt.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; pathList(t,path)[idx].w = Math.max(0,+el.value||0); saveAll(); render(); });
     on('[data-scope]', el=> el.onchange = ()=>{ const [pi,kind,i] = el.dataset.scope.split('|'); const x = pathList(t,`${pi}|${kind}`)[+i]; if(x){ if(el.value) x.scope = el.value; else delete x.scope; saveAll(); render(); } });
     on('[data-del]', el=> el.onclick = ()=>{ const [pi,kind,a,b2] = el.dataset.del.split('|'); const path = kind==='var' ? `${pi}|var|${a}` : `${pi}|${kind}`, idx = kind==='var' ? +b2 : +a; const l = pathList(t,path); if(kind==='level' && l.length<=1) return; l.splice(idx,1); saveAll(); render(); });
