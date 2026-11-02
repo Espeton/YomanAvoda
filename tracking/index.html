@@ -919,7 +919,9 @@ function openCell(k){
   document.getElementById('edCancel').onclick = closeModal;
   document.getElementById('edSave').onclick = ()=>{
     const pct = +document.getElementById('edPct').value, date = document.getElementById('edDate').value || todayStr();
-    addEntry(sid,tid,pk,unit,item,pct,date,document.getElementById('edNote').value.trim());
+    const note = document.getElementById('edNote').value.trim();
+    /* nothing changed (e.g. the history was just edited and the window is closed with "save") -> don't stack a new update on top */
+    if(pct!==Math.round(p) || note) addEntry(sid,tid,pk,unit,item,pct,date,note);
     if(document.getElementById('edRem').checked){
       const days = +document.getElementById('edRemDays').value||0, title = document.getElementById('edRemTitle').value.trim()||'תזכורת';
       if(rem){ rem.title = title; rem.baseDate = date; rem.due = addDays(date,days); rem.snoozedTo = null; }
