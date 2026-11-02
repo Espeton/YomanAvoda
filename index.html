@@ -1394,9 +1394,9 @@ function buildDailyWorkTableHtml(log){
   if(rows.length===0) return '<div class="empty">לא נרשמו עבודות יומיות.</div>';
   const trs = rows.map(r=>{
     const c = r.contractorId ? contractors.find(x=>x.id===r.contractorId) : null;
-    return `<tr><td>${esc(c?c.name:'—')}</td><td>${esc(r.days||'')}</td><td>${esc(r.hours||'')}</td><td style="white-space:pre-wrap;">${esc(r.description||'')}</td></tr>`;
+    return `<tr><td>${esc(c?c.name:'—')}</td><td>${esc(r.days||'')}</td><td style="white-space:pre-wrap;">${esc(r.description||'')}</td></tr>`;
   }).join('');
-  return `<table class="log-table"><colgroup><col style="width:24%"><col style="width:15%"><col style="width:15%"><col style="width:46%"></colgroup><thead><tr><th>קבלן משנה</th><th>ימי עבודה</th><th>שעות עבודה</th><th>פירוט המשימה</th></tr></thead><tbody>${trs}</tbody></table>`;
+  return `<table class="log-table"><colgroup><col style="width:24%"><col style="width:15%"><col style="width:61%"></colgroup><thead><tr><th>קבלן משנה</th><th>ימי עבודה</th><th>פירוט המשימה</th></tr></thead><tbody>${trs}</tbody></table>`;
 }
 function buildOrdersTableHtml(log){
   const rows = log.orders||[];
@@ -3215,7 +3215,7 @@ function renderDailyLog(main, loadId){
   document.getElementById('addDeduction').onclick = ()=>{ draft.deductions.push({id:uid('ded'), contractorId:'', crewId:'', reason:'', amount:''}); renderDeductionsRows(); scheduleAutosave(); };
   document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:''}); renderPlanningRows(); scheduleAutosave(); };
   document.getElementById('addDailyWork').onclick = ()=>{
-    draft.dailyWork.push({id:uid('dw'), contractorId:'', days:'', hours:'', description:''});
+    draft.dailyWork.push({id:uid('dw'), contractorId:'', days:'', description:''});
     renderDailyWorkRows(); scheduleAutosave();
   };
   document.getElementById('addOrderPlaced').onclick = ()=>{ draft.ordersPlaced.push({id:uid('op'), supplier:'', equipment:''}); renderOrdersPlacedRows(); scheduleAutosave(); };
@@ -3646,14 +3646,13 @@ function renderDailyWorkRows(){
 
   wrap.innerHTML = `
     <table class="log-table has-actions">
-      <colgroup><col style="width:24%"><col style="width:15%"><col style="width:15%"><col style="width:*"><col style="width:50px"></colgroup>
-      <thead><tr><th>קבלן משנה</th><th>ימי עבודה</th><th>שעות עבודה</th><th>פירוט המשימה</th><th></th></tr></thead>
+      <colgroup><col style="width:24%"><col style="width:15%"><col style="width:*"><col style="width:50px"></colgroup>
+      <thead><tr><th>קבלן משנה</th><th>ימי עבודה</th><th>פירוט המשימה</th><th></th></tr></thead>
       <tbody>
         ${draft.dailyWork.map((row,i)=>`
           <tr>
             <td>${contractorCellHtml(row, i)}</td>
             <td><input type="number" min="0" class="dw_days" data-i="${i}" value="${esc(row.days)}"></td>
-            <td><input type="number" min="0" step="0.5" class="dw_hours" data-i="${i}" value="${esc(row.hours)}"></td>
             <td><textarea class="dw_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div></td>
             <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
           </tr>
@@ -3679,7 +3678,6 @@ function renderDailyWorkRows(){
     renderDailyWorkRows();
   });
   wrap.querySelectorAll('.dw_days').forEach(el=>el.oninput = e=>{ draft.dailyWork[+e.target.dataset.i].days = e.target.value; scheduleAutosave(); });
-  wrap.querySelectorAll('.dw_hours').forEach(el=>el.oninput = e=>{ draft.dailyWork[+e.target.dataset.i].hours = e.target.value; scheduleAutosave(); });
   wrap.querySelectorAll('.dw_desc').forEach(el=>{
     autoGrowTextarea(el);
     el.oninput = e=>{
