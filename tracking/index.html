@@ -362,6 +362,7 @@ let tab = 'overview', me = null;
 let curS = '', curT = '', curP = '', ovS = '';
 let selectMode = false; const picked = new Set();
 let setupT = '', rMonth = todayStr().slice(0,7), rTrade = 'all', rS = 'all', rCon = 'all';
+let repType = 'monthly', prSite = '', prTrade = 'all'; /* "דוחות" tab: which report is open + the print-by-structure choices */
 function ensureSelection(){
   if(!siteById(curS)) curS = (sites[0]||{}).id || '';
   if(!siteById(ovS)) ovS = (sites[0]||{}).id || '';
@@ -386,7 +387,7 @@ function describeKey(k){
 /* ============================================================== rendering */
 function renderTabs(){
   const n = dueOpen().length;
-  const items = [['overview','סקירה'],['track','מעקב מפורט'],['templates','תבניות'],['settings','הגדרות'],['report','דוח חודשי'],['rem','תזכורות']];
+  const items = [['overview','סקירה'],['track','מעקב מפורט'],['templates','תבניות'],['settings','הגדרות'],['report','דוחות'],['rem','תזכורות']];
   document.getElementById('tabs').innerHTML = items.map(([id,l])=>`<button class="${tab===id?'active':''}" data-tab="${id}">${l}${id==='rem'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('');
   document.querySelectorAll('#tabs button').forEach(b=> b.onclick = ()=>{ tab = b.dataset.tab; render(); });
 }
@@ -502,7 +503,7 @@ function trackView(){
   const head = `
     <div class="chips"><span class="lbl">תחום:</span>${trades.map(x=>`<button class="chip ${x.id===t.id?'on':''}" data-trade="${x.id}">${esc(x.name)}</button>`).join('')}</div>
     <div class="chips"><span class="lbl">שלב:</span>${phaseChips}</div>
-    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div><button class="btn secondary small" data-editlevels="${s.id}" title="שינוי שם, הוספה והסרה של מפלסים">✏️ ערוך מפלסים</button><button class="btn secondary small" id="printBtn" title="הדפסת מבנה עם ההתקדמות שלו">🖨 הדפסה לפי מבנה</button>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
+    <div class="bar"><div><label>בניין / מרתף</label><select id="selS">${siteOptions(s.id)}</select></div><button class="btn secondary small" data-editlevels="${s.id}" title="שינוי שם, הוספה והסרה של מפלסים">✏️ ערוך מפלסים</button>${s.kind==='basement'&&s.under?`<span class="sum">מרחב נפרד מהבניינים · מתחת ל${esc(s.under)} (מידע בלבד)</span>`:''}</div>
     <div class="chips"><span class="lbl">צבע לפי:</span><button class="chip ${colorMode==='month'?'on':''}" data-colormode="month">חודש הביצוע</button><button class="chip ${colorMode==='pct'?'on':''}" data-colormode="pct">אחוז ביצוע</button></div>
     <div class="curcon">${conLine}</div>`;
   usedMonths = new Set();
@@ -812,7 +813,25 @@ function reportRows(){
   });
   return rows;
 }
+/* "דוחות" tab: a report picker + the chosen report (monthly progress report / print by structure) */
+const REPORT_TYPES = [['monthly','דוח ביצוע חודשי'],['print','הדפסה לפי מבנה']];
 function reportView(){
+  const picker = `<div class="chips no-print"><span class="lbl">דוח:</span>${REPORT_TYPES.map(([id,l])=>`<button class="chip ${repType===id?'on':''}" data-reptype="${id}">${l}</button>`).join('')}</div>`;
+  return picker + (repType==='print' ? printReportView() : monthlyReportView());
+}
+function printReportView(){
+  if(!sites.length) return '<div class="card"><h2>הדפסה לפי מבנה</h2><div class="empty">עדיין אין מבנים. ייבא או הוסף מבנה בלשונית "סקירה".</div></div>';
+  if(!prSite) prSite = siteById(curS) ? curS : 'bld';
+  if(prSite!=='bld' && prSite!=='all' && !siteById(prSite)) prSite = 'bld';
+  if(prTrade!=='all' && !tradeById(prTrade)) prTrade = 'all';
+  return `<div class="card"><h2>הדפסה לפי מבנה</h2>
+    <div class="sub">כל מבנה מודפס בעמוד נפרד: הקבלן המבצע וההתקדמות של כל תחום ושלב.</div>
+    <div class="bar no-print">
+      <div><label>מבנים</label><select id="prSites"><option value="bld" ${prSite==='bld'?'selected':''}>כל הבניינים (עמוד לכל בניין)</option><option value="all" ${prSite==='all'?'selected':''}>כל הבניינים וחלקי המרתף</option>${siteOptions(prSite)}</select></div>
+      <div><label>תחומים</label><select id="prTrades"><option value="all">כל התחומים</option>${trades.map(t=>`<option value="${t.id}" ${prTrade===t.id?'selected':''}>${esc(t.name)} בלבד</option>`).join('')}</select></div>
+      <button class="btn" id="prGo">🖨 הדפס</button></div></div>`;
+}
+function monthlyReportView(){
   const rows = reportRows(), byC = {}; rows.forEach(r=>{ const k = contractorName(r.con); const x = byC[k] || (byC[k] = {n:0, d:0}); x.n++; x.d += r.e-r.s; });
   const months = []; { const d = new Date(); for(let i=0;i<14;i++){ months.push(isoOf(new Date(d.getFullYear(), d.getMonth()-i, 1)).slice(0,7)); } }
   const body = rows.map(r=>`<tr><td class="l">${esc(r.site)}</td><td class="l">${esc(r.trade)}</td><td class="l">${esc(r.phase)}</td><td class="l">${esc(r.level)}</td><td class="l">${esc(contractorName(r.con))}</td><td>${Math.round(r.s)}%</td><td>${Math.round(r.e)}%</td><td>${r.e-r.s>=0?'+':''}${Math.round(r.e-r.s)}%</td></tr>`).join('');
@@ -1128,25 +1147,15 @@ function printSiteHtml(s, tradeList){
   return `<div class="pr-site"><h2>מעקב ביצוע - ${esc(s.name)}</h2><div class="sum">מצב נכון ל-${fmt(todayStr())}${s.under?` · מתחת ל${esc(s.under)}`:''}</div>
     <table class="pr-sum"><thead><tr><th>תחום</th><th>קבלן מבצע</th><th>התקדמות</th></tr></thead><tbody>${sum}</tbody></table>${sections}${monthLegendHtml()}</div>`;
 }
-function openPrintDialog(){
-  const cs = siteById(curS), ct = tradeById(curT);
-  modal(`<h2>הדפסה לפי מבנה</h2><div class="sub">כל מבנה מודפס בעמוד נפרד: הקבלן המבצע וההתקדמות של כל תחום ושלב.</div>
-    <div class="f"><label>מבנים</label><select id="prSites"><option value="cur">${esc(cs.name)} בלבד</option><option value="bld">כל הבניינים (עמוד לכל בניין)</option><option value="all">כל הבניינים וחלקי המרתף</option></select></div>
-    <div class="f"><label>תחומים</label><select id="prTrades"><option value="all">כל התחומים</option><option value="cur">${esc(ct?ct.name:'')} בלבד</option></select></div>
-    <div class="right" style="margin-top:10px;"><button class="btn" id="prGo">🖨 הדפס</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
-  document.getElementById('edCancel').onclick = closeModal;
-  document.getElementById('prGo').onclick = ()=>{
-    const v = document.getElementById('prSites').value, tv = document.getElementById('prTrades').value;
-    const list = v==='cur' ? [cs] : v==='bld' ? sites.filter(s=>s.kind==='building') : sites.slice();
-    const tl = tv==='cur' && ct ? [ct] : trades;
-    if(!list.length){ toast('אין מבנים להדפסה'); return; }
-    document.getElementById('printOut').innerHTML = list.map(s=>printSiteHtml(s,tl)).join('');
-    closeModal();
-    const done = ()=>{ document.body.classList.remove('print-site'); window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    document.body.classList.add('print-site');
-    window.print();
-  };
+function printSites(){
+  const list = prSite==='bld' ? sites.filter(s=>s.kind==='building') : prSite==='all' ? sites.slice() : [siteById(prSite)].filter(Boolean);
+  const ct = tradeById(prTrade), tl = prTrade!=='all' && ct ? [ct] : trades;
+  if(!list.length){ toast('אין מבנים להדפסה'); return; }
+  document.getElementById('printOut').innerHTML = list.map(s=>printSiteHtml(s,tl)).join('');
+  const done = ()=>{ document.body.classList.remove('print-site'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  document.body.classList.add('print-site');
+  window.print();
 }
 
 /* ============================================================== wiring */
@@ -1173,7 +1182,6 @@ function wire(){
     assignments.push({id:uid('as'), siteId:curS, tradeId:curT, contractorId:cid, from:BEGIN, to:null, reason:'', note:''}); saveAll(); render(); };
   on('[data-cell]', el=> el.onclick = ()=> openCell(el.dataset.cell));
   on('[data-colormode]', el=> el.onclick = ()=>{ colorMode = el.dataset.colormode; try{ localStorage.setItem('trk.colorMode', colorMode); }catch(e){} render(); });
-  const pb = document.getElementById('printBtn'); if(pb) pb.onclick = openPrintDialog;
   const ec = document.getElementById('editCols'); if(ec) ec.onclick = ()=>{ const s = siteById(curS); openColumnsEditor(curT, curP, s && s.kind); };
   on('[data-comp]', el=> el.onclick = ()=>{ if(selectMode){ const id = el.dataset.comp; picked.has(id) ? picked.delete(id) : picked.add(id); render(); } else openComp(el.dataset.comp); });
   on('[data-picklevel]', el=> el.onclick = ()=>{ if(!selectMode) return; const s = siteById(curS), t = tradeById(curT), ph = phaseOf(t,curP), lv = s.levels.find(l=>l.id===el.dataset.picklevel);
@@ -1282,7 +1290,13 @@ function wire(){
   const be = document.getElementById('bkExport'); if(be) be.onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-מעקב-ביצוע-${todayStr()}.json`; a.click(); };
   const bi = document.getElementById('bkImport'); if(bi) bi.onchange = e=>{ const f = e.target.files[0]; if(!f) return; const rd = new FileReader(); rd.onload = ()=>{ try{ const d = JSON.parse(rd.result);
       if(confirm('לטעון את הגיבוי? כל הנתונים הנוכחיים יוחלפו (גם ב-Drive).')){ applyData(d); saveAll(); render(); toast('הגיבוי נטען'); } }catch(err){ toast('הקובץ אינו גיבוי תקין'); } }; rd.readAsText(f); };
-  /* report */
+  /* reports */
+  on('[data-reptype]', el=> el.onclick = ()=>{ repType = el.dataset.reptype; render(); });
+  const prs = document.getElementById('prSites'); if(prs){
+    prs.onchange = ()=>{ prSite = prs.value; };
+    document.getElementById('prTrades').onchange = e=>{ prTrade = e.target.value; };
+    document.getElementById('prGo').onclick = printSites;
+  }
   const rm = document.getElementById('rM'); if(rm){
     rm.onchange = ()=>{ rMonth = rm.value; render(); }; document.getElementById('rT').onchange = e=>{ rTrade = e.target.value; render(); };
     document.getElementById('rS').onchange = e=>{ rS = e.target.value; render(); }; document.getElementById('rC').onchange = e=>{ rCon = e.target.value; render(); };
