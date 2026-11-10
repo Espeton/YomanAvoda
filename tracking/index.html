@@ -1311,6 +1311,11 @@ function wire(){
 }
 ['editor'].forEach(id=> document.getElementById(id).addEventListener('click', e=>{ if(e.target.id===id) closeModal(); }));
 document.getElementById('saveBtn').onclick = ()=> flushSave();
+/* Ctrl+S / Cmd+S: would save a copy of the whole page (= the application) to the computer; here it means "save my work" (flush to Drive).
+   Only stops the casual keystroke - the browser menu and "view source" can't be blocked by a web page. */
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code==='KeyS' || String(e.key).toLowerCase()==='s')){ e.preventDefault(); flushSave(); }
+});
 
 /* ============================================================== Drive: sign-in, load, save, merge */
 const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';

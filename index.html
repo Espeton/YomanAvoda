@@ -4651,7 +4651,7 @@ function setWorkCardTime(workerId, date, field, value){
   let e = workCardEntry(workerId, date);
   if(!e){
     if(!value) return; // nothing to create if everything is still empty
-    e = {id: `wc_${workerId}_${date}`, workerId, date, timeIn:'', timeOut:'', dayType:'', dayNote:''};
+    e = {id: `wc_${workerId}_${date}`, workerId, date, timeIn:'', timeOut:'', dayType:'', dayNote:'', note:''};
     workCardEntries.push(e);
   }
   e[field] = value;
@@ -4659,7 +4659,7 @@ function setWorkCardTime(workerId, date, field, value){
     if(value){ e.timeIn = ''; e.timeOut = ''; }   // a marked day has no hours
     else { e.dayNote = ''; }
   }
-  if(!e.timeIn && !e.timeOut && !e.dayType){
+  if(!e.timeIn && !e.timeOut && !e.dayType && !e.note){
     // Everything cleared - drop the record entirely, matching toolboxRecords' lazy-creation philosophy.
     workCardEntries = workCardEntries.filter(x=>x.id!==e.id);
   }
@@ -4696,7 +4696,11 @@ function computeWorkCardTotals(workerId, month){
 function renderWorkCard(main){
   const card = document.createElement('div');
   card.className = 'card';
-  const contractorsWithWorkers = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).some(cr=>workers.some(w=>w.crewId===cr.id))));
+  /* 10.11.2026: inactive workers are not offered here at all (nor a contractor / crew that has only inactive workers) */
+  const activeWorkerIn = crId => workers.some(w=>w.crewId===crId && w.active!==false);
+  const contractorsWithWorkers = sortContractorsAlpha(contractors.filter(c=>crewsForContractor(c.id).some(cr=>activeWorkerIn(cr.id))));
+  { const sel = workers.find(x=>x.id===wcWorkerId); if(wcWorkerId && (!sel || sel.active===false)){ wcWorkerId = ''; } }
+  if(wcContractorId && !contractorsWithWorkers.some(c=>c.id===wcContractorId)){ wcContractorId = ''; wcCrewId = ''; wcWorkerId = ''; }
   card.innerHTML = `
     <h2>כרטיס עבודה לפועל</h2>
     ${contractorsWithWorkers.length===0 ? '<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים מוגדרים (טאב "קבלני משנה").</div>' : `
@@ -4722,12 +4726,13 @@ function renderWorkCard(main){
   const workerEl = document.getElementById('wc_worker');
 
   function populateCrews(){
-    const crewOpts = wcContractorId ? crewsForContractor(wcContractorId).filter(cr=>workers.some(w=>w.crewId===cr.id)) : [];
+    const crewOpts = wcContractorId ? crewsForContractor(wcContractorId).filter(cr=>activeWorkerIn(cr.id)) : [];
+    if(wcCrewId && !crewOpts.some(cr=>cr.id===wcCrewId)){ wcCrewId = ''; wcWorkerId = ''; }
     crewEl.innerHTML = '<option value="">בחר קבוצה...</option>' + crewOpts.map(cr=>`<option value="${cr.id}" ${wcCrewId===cr.id?'selected':''}>${esc(cr.name)}</option>`).join('');
   }
   function populateWorkers(){
-    const workerOpts = wcCrewId ? sortWorkersAlpha(workers.filter(w=>w.crewId===wcCrewId)) : [];
-    workerEl.innerHTML = '<option value="">בחר פועל...</option>' + workerOpts.map(w=>`<option value="${w.id}" ${wcWorkerId===w.id?'selected':''}>${esc(w.idNumber||'—')} - ${esc(w.name||'')}${w.active===false?' (לא פעיל)':''}</option>`).join('');
+    const workerOpts = wcCrewId ? sortWorkersAlpha(workers.filter(w=>w.crewId===wcCrewId && w.active!==false)) : [];
+    workerEl.innerHTML = '<option value="">בחר פועל...</option>' + workerOpts.map(w=>`<option value="${w.id}" ${wcWorkerId===w.id?'selected':''}>${esc(w.idNumber||'—')} - ${esc(w.name||'')}</option>`).join('');
   }
   populateCrews();
   populateWorkers();
@@ -4749,6 +4754,10 @@ function renderWorkCard(main){
    "כרטיסי עבודה לקבלן" report (renderWorkCardsReport), so a card looks identical in both. */
 function wcHalvesHtml(workerId, month){
   const numDays = toolboxDaysInMonth(month);
+  /* A free-text remark per day (10.11.2026, entry field `note`): the extra "הערה" column is printed only when the worker has at least one remark this month,
+     so cards without remarks keep their narrow three-column layout. */
+  let hasNotes = false;
+  for(let d=1; d<=numDays && !hasNotes; d++){ const x = workCardEntry(workerId, `${month}-${String(d).padStart(2,'0')}`); if(x && x.note) hasNotes = true; }
   function rowsFor(fromDay, toDay){
     let out = '';
     for(let d=fromDay; d<=toDay; d++){
@@ -4759,20 +4768,22 @@ function wcHalvesHtml(workerId, month){
       const satCls = wd===6 ? ' class="wc-saturday"' : '';
       if(e && e.dayType){
         const lbl = wcDayTypeLabel(e.dayType) + (e.dayType==='other' && e.dayNote ? ': '+e.dayNote : '');
-        out += `<tr${satCls}><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td></tr>`;
+        out += `<tr${satCls}><td>${d} (${dow})</td><td colspan="2" style="text-align:center;">${esc(lbl)}</td>${noteCell(e)}</tr>`;
       } else {
-        out += `<tr${satCls}><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td></tr>`;
+        out += `<tr${satCls}><td>${d} (${dow})</td><td>${e?esc(e.timeIn||''):''}</td><td>${e?esc(e.timeOut||''):''}</td>${noteCell(e)}</tr>`;
       }
     }
     return out;
   }
+  const noteCell = e=> hasNotes ? `<td style="text-align:right;">${e?esc(e.note||''):''}</td>` : '';
+  const head = `<tr><th>יום</th><th>כניסה</th><th>יציאה</th>${hasNotes?'<th>הערה</th>':''}</tr>`;
   const halfSplit = Math.ceil(numDays/2);
   return `
       <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${rowsFor(1, halfSplit)}</tbody></table>
+        <table><thead>${head}</thead><tbody>${rowsFor(1, halfSplit)}</tbody></table>
       </div>
       <div class="wc-print-half">
-        <table><thead><tr><th>יום</th><th>כניסה</th><th>יציאה</th></tr></thead><tbody>${rowsFor(halfSplit+1, numDays)}</tbody></table>
+        <table><thead>${head}</thead><tbody>${rowsFor(halfSplit+1, numDays)}</tbody></table>
       </div>`;
 }
 function renderWorkCardGrid(){
@@ -4802,6 +4813,7 @@ function renderWorkCardGrid(){
           <select class="wc_type" data-date="${date}"><option value="">— שעות —</option>${WC_DAY_TYPES.map(t=>`<option value="${t.id}" ${dt===t.id?'selected':''}>${t.label}</option>`).join('')}</select>
           <input class="wc_note" data-date="${date}" placeholder="פירוט (אחר)" value="${e?esc(e.dayNote||''):''}" style="margin-top:3px; ${dt==='other'?'':'display:none;'}">
         </td>
+        <td><input class="wc_remark" data-date="${date}" placeholder="הערה" value="${e?esc(e.note||''):''}"></td>
       </tr>
     `;
   }).join('');
@@ -4819,8 +4831,8 @@ function renderWorkCardGrid(){
     </div>
     <div class="tbx-matrix-wrap wc-onscreen-only" style="max-height:60vh;">
       <table class="log-table wc-table">
-        <colgroup><col style="width:70px"><col><col><col style="width:170px"></colgroup>
-        <thead><tr><th>יום</th><th>שעת כניסה</th><th>שעת יציאה</th><th>או סימון יום</th></tr></thead>
+        <colgroup><col style="width:70px"><col><col><col style="width:170px"><col style="width:26%"></colgroup>
+        <thead><tr><th>יום</th><th>שעת כניסה</th><th>שעת יציאה</th><th>או סימון יום</th><th>הערה</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -4868,6 +4880,9 @@ function renderWorkCardGrid(){
   });
   body.querySelectorAll('.wc_note').forEach(el=>{
     el.onchange = e=>{ setWorkCardTime(w.id, e.target.dataset.date, 'dayNote', e.target.value.trim()); };
+  });
+  body.querySelectorAll('.wc_remark').forEach(el=>{
+    el.onchange = e=>{ setWorkCardTime(w.id, e.target.dataset.date, 'note', e.target.value.trim()); };
   });
   recomputeWorkCardTotals(w.id);
 }
@@ -6898,6 +6913,16 @@ function checkPlanReminders(){
     bar.style.display = 'none';
   };
 }
+/* Ctrl+S / Cmd+S (10.11.2026): in the browser it saves a copy of the whole page (= the application) to the computer. Here it means "save my
+   work" instead - the open daily log if there is one, otherwise a straight flush to Drive. This only stops the casual keystroke; the browser
+   menu ("Save page as...") and "view source" can't be blocked by a web page. */
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code==='KeyS' || String(e.key).toLowerCase()==='s')){
+    e.preventDefault();
+    const saveLogBtn = document.getElementById('saveLog');
+    if(saveLogBtn && saveLogBtn.offsetParent) saveLogBtn.click(); else flushSave();
+  }
+});
 setInterval(checkPlanReminders, 30000);
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkPlanReminders(); });
 
