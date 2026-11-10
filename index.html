@@ -416,6 +416,14 @@
   #driveProblemBar .dp-actions{display:flex; flex-direction:column; gap:8px; margin-top:14px;}
   #driveProblemBar .dp-actions .btn{width:100%; font-size:15px;}
   #driveProblemBar #dpFix{background:#B91C1C;}
+  .plan-remind-lbl{display:inline-flex; align-items:center; gap:6px; margin-top:4px; font-size:12.5px; color:var(--muted); cursor:pointer;}
+  .plan-remind-lbl input{width:auto; margin:0;}
+  #planRemBar{display:none; position:fixed; inset:0; z-index:2900; background:rgba(15,23,42,.6); align-items:center; justify-content:center; padding:16px;}
+  #planRemBar .pr-box{background:#fff; border-top:6px solid #2563EB; border-radius:12px; max-width:520px; width:100%; max-height:90vh; overflow:auto; padding:20px 22px; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  #planRemBar h2{margin:0 0 4px; font-size:19px; color:#1E3A8A; border:none; padding:0;}
+  #planRemBar .pr-item{border:1px solid var(--border); border-inline-start:4px solid #2563EB; border-radius:8px; padding:8px 10px; margin-top:8px; background:#F8FAFF;}
+  #planRemBar .pr-meta{font-size:12.5px; color:var(--muted);}
+  #planRemBar .pr-desc{white-space:pre-wrap; margin-top:3px; font-size:14.5px;}
   .presence-chip{position:relative; margin-inline-start:auto;}
   .presence-btn{background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:14px; padding:4px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
   .presence-btn:hover{background:rgba(255,255,255,.24);}
@@ -1860,6 +1868,7 @@ function renderContractors(main){
    optional here, with the same red (expired) / yellow (expires within 7 days) warnings as worker documents.
    The exact legal requirements per equipment type should be confirmed with the site safety officer. */
 let editingEquipmentId = null, equipmentSearchQuery = '', equipmentContractorFilter = '';
+const EQUIPMENT_PHOTO_MAX = 5;
 const EQUIPMENT_DATE_FIELDS = [
   {key:'licenseExpiry', label:'רישיון כלי'},
   {key:'inspectionExpiry', label:'בדיקה תקופתית (בודק מוסמך)'},
@@ -1919,6 +1928,12 @@ function renderEquipmentRegistry(main){
         <div class="field"><label>תוקף רישיון מפעיל</label><input id="eq_operatorLicenseExpiry" type="date" value="${v('operatorLicenseExpiry')}"></div>
       </div>
       <div class="field"><label>הערה</label><input id="eq_note" value="${v('note')}"></div>
+      <div class="field">
+        <label title="עד ${EQUIPMENT_PHOTO_MAX} קבצים, אפשר להוסיף בכל פעם - תמונה או PDF (עמוד ראשון בלבד). לכל תמונה אפשר לכתוב מלל הסבר">תמונות הכלי (עד ${EQUIPMENT_PHOTO_MAX}, עם מלל הסבר)</label>
+        <input type="file" id="eq_photo_in" accept="image/*,application/pdf" multiple>
+        <span class="paste-zone" id="paste_eq_photo" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V">📋 הדבק</span>
+      </div>
+      <div class="photos-grid" id="eq_photo_grid" style="margin-top:4px;"></div>
       <div class="row-actions">
         <button class="btn" id="eq_save">${editing?'שמור שינויים':'הוסף כלי'}</button>
         ${editing?'<button class="btn secondary" id="eq_cancel">בטל עריכה</button>':''}
@@ -1982,7 +1997,7 @@ function renderEquipmentRegistry(main){
               <button class="btn secondary small eq-edit" data-id="${e.id}">ערוך</button>
               <button class="btn secondary small eq-active" data-id="${e.id}">${e.active===false?'החזר לפעיל':'סמן כלא פעיל'}</button>
               <button class="btn danger small eq-del" data-id="${e.id}">מחק</button>
-            </div></td></tr>${e.note?`<tr><td colspan="9" class="hint">הערה: ${esc(e.note)}</td></tr>`:''}`;
+            </div></td></tr>${e.note?`<tr><td colspan="9" class="hint">הערה: ${esc(e.note)}</td></tr>`:''}${(e.photos&&e.photos.length)?`<tr class="no-print"><td colspan="9"><div class="photos-grid" style="margin-top:0;">${e.photos.map(p=>`<div class="photo-thumb" style="width:84px;"><img src="${p.dataUrl}" style="width:84px; height:62px;">${p.caption?`<div class="hint">${esc(p.caption)}</div>`:''}</div>`).join('')}</div></td></tr>`:''}`;
         }).join('')}</tbody></table></div>`;
     listEl.querySelectorAll('.eq-edit').forEach(b=> b.onclick = ()=>{ editingEquipmentId = b.dataset.id; render(); window.scrollTo(0,0); });
     listEl.querySelectorAll('.eq-active').forEach(b=> b.onclick = ()=>{ const e = heavyEquipment.find(x=>x.id===b.dataset.id); if(!e) return; e.active = e.active===false; saveAll(); toast(e.active?'הכלי הוחזר לפעיל':'הכלי סומן כלא פעיל'); render(); });
@@ -1995,12 +2010,47 @@ function renderEquipmentRegistry(main){
   document.getElementById('eq_search').oninput = e=>{ equipmentSearchQuery = e.target.value; renderList(); };
   document.getElementById('eq_print').onclick = ()=> window.print();
   const cancel = document.getElementById('eq_cancel'); if(cancel) cancel.onclick = ()=>{ editingEquipmentId = null; render(); };
+  /* Equipment photos (10.11.2026): up to EQUIPMENT_PHOTO_MAX images (or PDFs, first page) with a caption each, staged here until "הוסף כלי / שמור שינויים" */
+  const eqPhotos = editing ? (editing.photos||[]).map(x=>({...x})) : [];
+  const eqGrid = document.getElementById('eq_photo_grid');
+  function renderEqPhotos(){
+    eqGrid.innerHTML = '';
+    eqPhotos.forEach((ph,i)=>{
+      const div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.innerHTML = `<button type="button" class="rm" data-i="${i}">×</button><img src="${ph.dataUrl}"><input placeholder="מלל הסבר לתמונה" class="eq_cap" data-i="${i}" value="${esc(ph.caption||'')}">`;
+      eqGrid.appendChild(div);
+    });
+    eqGrid.querySelectorAll('.eq_cap').forEach(el=>el.oninput = e=>{ eqPhotos[+e.target.dataset.i].caption = e.target.value; });
+    eqGrid.querySelectorAll('.rm').forEach(el=>el.onclick = e=>{ eqPhotos.splice(+e.target.dataset.i,1); renderEqPhotos(); });
+  }
+  async function addEqPhotos(files){
+    const room = EQUIPMENT_PHOTO_MAX - eqPhotos.length;
+    if(room<=0){ toast(`הגעת למקסימום ${EQUIPMENT_PHOTO_MAX} תמונות`); return; }
+    const failed = [], notes = [];
+    if(files.some(f=> f.type==='application/pdf' || /\.pdf$/i.test(f.name||''))) toast('ממיר PDF לתמונה...');
+    for(const f of files.slice(0, room)){
+      try{
+        const {dataUrl, note} = await photoOrPdfDataUrl(f, 1000, 0.7);
+        eqPhotos.push({id:uid('photo'), caption:'', dataUrl});
+        if(note) notes.push(note);
+      }catch(err){ failed.push(f.name); }
+    }
+    if(failed.length) toast(`לא הועלו (לא תמונות/PDF תקינים): ${failed.join(', ')}`);
+    else if(notes.length) toast(notes.join(' · '));
+    else if(files.length>room) toast(`נוספו עד ${EQUIPMENT_PHOTO_MAX} תמונות בלבד (המכסה)`);
+    renderEqPhotos();
+  }
+  document.getElementById('eq_photo_in').onchange = async e=>{ const files = Array.from(e.target.files); e.target.value = ''; await addEqPhotos(files); };
+  attachPasteZone(document.getElementById('paste_eq_photo'), addEqPhotos);
+  renderEqPhotos();
   document.getElementById('eq_save').onclick = ()=>{
     const g = id => document.getElementById(id).value.trim();
     const rec = {
       contractorId: g('eq_contractor'), type: g('eq_type'), number: g('eq_number'), licenseExpiry: g('eq_licenseExpiry'),
       model: g('eq_model'), serial: g('eq_serial'), capacity: g('eq_capacity'), inspectionExpiry: g('eq_inspectionExpiry'), inspectionCert: g('eq_inspectionCert'),
-      insuranceExpiry: g('eq_insuranceExpiry'), operatorName: g('eq_operatorName'), operatorLicenseExpiry: g('eq_operatorLicenseExpiry'), note: g('eq_note')
+      insuranceExpiry: g('eq_insuranceExpiry'), operatorName: g('eq_operatorName'), operatorLicenseExpiry: g('eq_operatorLicenseExpiry'), note: g('eq_note'),
+      photos: eqPhotos.map(p=>({...p, caption:(p.caption||'').trim()}))
     };
     // A missing "required" detail never blocks saving (23.10.2026): the item is saved and flagged "להשלים: ..."
     // in the list until the detail is filled in. Only a completely empty form is refused.
@@ -3213,7 +3263,7 @@ function renderDailyLog(main, loadId){
   };
   document.getElementById('addException').onclick = ()=>{ draft.exceptions.push({id:uid('exc'), contractorId:'', description:''}); renderExceptionsRows(); scheduleAutosave(); };
   document.getElementById('addDeduction').onclick = ()=>{ draft.deductions.push({id:uid('ded'), contractorId:'', crewId:'', reason:'', amount:''}); renderDeductionsRows(); scheduleAutosave(); };
-  document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:''}); renderPlanningRows(); scheduleAutosave(); };
+  document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:'', remind:true}); renderPlanningRows(); scheduleAutosave(); };
   document.getElementById('addDailyWork').onclick = ()=>{
     draft.dailyWork.push({id:uid('dw'), contractorId:'', days:'', description:''});
     renderDailyWorkRows(); scheduleAutosave();
@@ -3866,7 +3916,8 @@ function renderPlanningRows(){
         ${draft.planning.map((row,i)=>`
           <tr>
             <td>${contractorCellHtml(row, i)}</td>
-            <td><textarea class="plan_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div></td>
+            <td><textarea class="plan_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div>
+              <label class="no-print plan-remind-lbl" title="חלון תזכורת יקפוץ בשעה ${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ופעם נוספת למחרת החל משעה ${PLAN_REMINDER_SLOTS[1].time} (כשהאפליקציה פתוחה)"><input type="checkbox" class="plan_remind" data-i="${i}" ${row.remind?'checked':''}> 🔔 תזכורת (${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ומחר ${PLAN_REMINDER_SLOTS[1].time})</label></td>
             <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
           </tr>
         `).join('')}
@@ -3883,6 +3934,10 @@ function renderPlanningRows(){
   wrap.querySelectorAll('.change-contractor-btn').forEach(el=>el.onclick = e=>{
     editingPlanContractorRows.add(+e.target.dataset.i);
     renderPlanningRows();
+  });
+  wrap.querySelectorAll('.plan_remind').forEach(el=>el.onchange = e=>{
+    draft.planning[+e.target.dataset.i].remind = e.target.checked;
+    scheduleAutosave();
   });
   wrap.querySelectorAll('.plan_desc').forEach(el=>{
     autoGrowTextarea(el);
@@ -6782,6 +6837,70 @@ function hideDriveProblem(){
   const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none';
   if(document.title.startsWith('⚠ ')) document.title = document.title.slice(2);
 }
+/* ===================== Planning reminders (10.11.2026) =====================
+   A "תכנון" row with the 🔔 box ticked pops a reminder window twice: at 17:30 on the log's own date, and once more the next
+   day from 08:00 (when the app is open - a web page can't wake itself up). When the app is only opened after 08:00 the next day,
+   just the newer reminder is shown. A reminder counts as handled per browser (localStorage) once "הבנתי" is pressed, and is
+   dropped silently PLAN_REMINDER_GRACE_DAYS after its last slot, so a new user / new browser doesn't get a flood of old ones. */
+const PLAN_REMINDER_SLOTS = [{id:1, dayOffset:0, time:'17:30', label:'תזכורת ערב'}, {id:2, dayOffset:1, time:'08:00', label:'תזכורת בוקר'}];
+const PLAN_REMINDER_GRACE_DAYS = 2, PLAN_REMINDER_SEEN_KEY = 'planReminderSeen';
+function planSlotTime(dateStr, slot){
+  const [y,m,d] = dateStr.split('-').map(Number), [hh,mm] = slot.time.split(':').map(Number);
+  return new Date(y, m-1, d + slot.dayOffset, hh, mm, 0, 0);
+}
+function planSeenLoad(){ try{ return JSON.parse(localStorage.getItem(PLAN_REMINDER_SEEN_KEY) || '{}') || {}; }catch(e){ return {}; } }
+function planSeenSave(m){ try{ localStorage.setItem(PLAN_REMINDER_SEEN_KEY, JSON.stringify(m)); }catch(e){} }
+function planRemindersDue(now){
+  const seen = planSeenLoad(), out = [];
+  logs.forEach(l=>{
+    if(l.deleted || !/^\d{4}-\d{2}-\d{2}$/.test(l.date||'')) return;
+    (l.planning||[]).forEach(r=>{
+      if(!r || !r.remind || !r.id || !String(r.description||'').trim()) return;
+      let slot = null;
+      PLAN_REMINDER_SLOTS.forEach(s=>{ if(now >= planSlotTime(l.date, s)) slot = s; });
+      if(!slot) return;
+      const last = PLAN_REMINDER_SLOTS[PLAN_REMINDER_SLOTS.length-1];
+      if(now >= new Date(planSlotTime(l.date, last).getTime() + PLAN_REMINDER_GRACE_DAYS*86400000)) return;
+      if((seen[l.id+'|'+r.id]||0) >= slot.id) return;
+      out.push({log:l, row:r, slot});
+    });
+  });
+  return out.sort((a,b)=> a.log.date.localeCompare(b.log.date));
+}
+function checkPlanReminders(){
+  if(!logs.length) return;
+  const due = planRemindersDue(new Date());
+  let bar = document.getElementById('planRemBar');
+  if(!due.length){ if(bar) bar.style.display = 'none'; return; }
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'planRemBar'; bar.className = 'no-print';
+    bar.setAttribute('role','alertdialog'); bar.setAttribute('aria-modal','true');
+    document.body.appendChild(bar);
+  }
+  const key = due.map(x=>x.log.id+'|'+x.row.id+'|'+x.slot.id).join(',');
+  if(bar.style.display === 'flex' && bar.dataset.key === key) return;
+  bar.dataset.key = key;
+  bar.innerHTML = `<div class="pr-box">
+      <h2>🔔 תזכורת - תכנון עבודה</h2>
+      <div class="pr-meta">${due.length} ${due.length===1?'פריט תכנון':'פריטי תכנון'} לתשומת לבך</div>
+      ${due.map(x=>{
+        const p = projects.find(pp=>pp.id===x.log.projectId), c = x.row.contractorId ? contractors.find(cc=>cc.id===x.row.contractorId) : null;
+        return `<div class="pr-item"><div class="pr-meta">${esc(x.slot.label)} · יומן ${esc(fmtDate(x.log.date))}${p?' · '+esc(p.name):''}${c?' · '+esc(c.name):''}</div><div class="pr-desc">${esc(x.row.description)}</div></div>`;
+      }).join('')}
+      <div style="display:flex; gap:8px; margin-top:14px;"><button type="button" class="btn" id="prOk" style="flex:1;">הבנתי</button></div>
+    </div>`;
+  bar.style.display = 'flex';
+  document.getElementById('prOk').onclick = ()=>{
+    const seen = planSeenLoad();
+    due.forEach(x=>{ const k = x.log.id+'|'+x.row.id; seen[k] = Math.max(seen[k]||0, x.slot.id); });
+    planSeenSave(seen);
+    bar.style.display = 'none';
+  };
+}
+setInterval(checkPlanReminders, 30000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkPlanReminders(); });
+
 function downloadUnsavedBackup(){
   const blob = new Blob([JSON.stringify(buildFullPayload())], {type:'application/json'});
   const a = document.createElement('a');
@@ -6864,6 +6983,7 @@ async function readDataFile(id, meta){
   if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
   applyFullData(await contentRes.json());
   baseSnapshot = snapshotPayload();
+  setTimeout(checkPlanReminders, 2000);
 }
 function loadScriptOnce(url, test){
   return new Promise((resolve,reject)=>{
