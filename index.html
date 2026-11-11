@@ -3917,7 +3917,7 @@ function renderPlanningRows(){
           <tr>
             <td>${contractorCellHtml(row, i)}</td>
             <td><textarea class="plan_desc" data-i="${i}">${esc(row.description)}</textarea><div class="print-mirror">${esc(row.description)}</div>
-              <label class="no-print plan-remind-lbl" title="חלון תזכורת יקפוץ בשעה ${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ופעם נוספת למחרת החל משעה ${PLAN_REMINDER_SLOTS[1].time} (כשהאפליקציה פתוחה)"><input type="checkbox" class="plan_remind" data-i="${i}" ${row.remind?'checked':''}> 🔔 תזכורת (${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ומחר ${PLAN_REMINDER_SLOTS[1].time})</label></td>
+              <label class="no-print plan-remind-lbl" title="חלון תזכורת יקפוץ בשעה ${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ופעם נוספת למחרת החל משעה ${PLAN_REMINDER_SLOTS[1].time} (כשהאפליקציה פתוחה)"><input type="checkbox" class="plan_remind" data-i="${i}" ${row.remind?'checked':''}> 🔔 תזכורת (${PLAN_REMINDER_SLOTS[0].time} ביום היומן, ומחר ${PLAN_REMINDER_SLOTS[1].time})${row.remind&&row.remindDone?' · <b style="color:#15803D;">✔ בוצע</b>':''}</label></td>
             <td><button class="btn danger small rm-btn" data-i="${i}">מחק</button></td>
           </tr>
         `).join('')}
@@ -3936,7 +3936,9 @@ function renderPlanningRows(){
     renderPlanningRows();
   });
   wrap.querySelectorAll('.plan_remind').forEach(el=>el.onchange = e=>{
-    draft.planning[+e.target.dataset.i].remind = e.target.checked;
+    const pr = draft.planning[+e.target.dataset.i];
+    pr.remind = e.target.checked; pr.remindDone = false; // ticking it again re-arms a reminder that was marked done
+    renderPlanningRows();
     scheduleAutosave();
   });
   wrap.querySelectorAll('.plan_desc').forEach(el=>{
@@ -6870,7 +6872,7 @@ function planRemindersDue(now){
   logs.forEach(l=>{
     if(l.deleted || !/^\d{4}-\d{2}-\d{2}$/.test(l.date||'')) return;
     (l.planning||[]).forEach(r=>{
-      if(!r || !r.remind || !r.id || !String(r.description||'').trim()) return;
+      if(!r || !r.remind || r.remindDone || !r.id || !String(r.description||'').trim()) return;
       let slot = null;
       PLAN_REMINDER_SLOTS.forEach(s=>{ if(now >= planSlotTime(l.date, s)) slot = s; });
       if(!slot) return;
@@ -6881,6 +6883,16 @@ function planRemindersDue(now){
     });
   });
   return out.sort((a,b)=> a.log.date.localeCompare(b.log.date));
+}
+/* "✔ בוצע" on a reminder: the planning row is marked done in the log itself (shared with everyone, saved to Drive), so it never pops again */
+function planReminderDone(logId, rowId){
+  const l = logs.find(x=>x.id===logId), r = l && (l.planning||[]).find(x=>x.id===rowId);
+  if(r) r.remindDone = true;
+  if(draft && draft.id===logId){
+    const dr = (draft.planning||[]).find(x=>x.id===rowId);
+    if(dr){ dr.remindDone = true; if(document.getElementById('planningRows')) renderPlanningRows(); }
+  }
+  saveAll();
 }
 function checkPlanReminders(){
   if(!logs.length) return;
@@ -6899,13 +6911,19 @@ function checkPlanReminders(){
   bar.innerHTML = `<div class="pr-box">
       <h2>🔔 תזכורת - תכנון עבודה</h2>
       <div class="pr-meta">${due.length} ${due.length===1?'פריט תכנון':'פריטי תכנון'} לתשומת לבך</div>
-      ${due.map(x=>{
+      ${due.map((x,i)=>{
         const p = projects.find(pp=>pp.id===x.log.projectId), c = x.row.contractorId ? contractors.find(cc=>cc.id===x.row.contractorId) : null;
-        return `<div class="pr-item"><div class="pr-meta">${esc(x.slot.label)} · יומן ${esc(fmtDate(x.log.date))}${p?' · '+esc(p.name):''}${c?' · '+esc(c.name):''}</div><div class="pr-desc">${esc(x.row.description)}</div></div>`;
+        return `<div class="pr-item"><div class="pr-meta">${esc(x.slot.label)} · יומן ${esc(fmtDate(x.log.date))}${p?' · '+esc(p.name):''}${c?' · '+esc(c.name):''}</div><div class="pr-desc">${esc(x.row.description)}</div>
+          <div style="margin-top:6px;"><button type="button" class="btn small pr-done" data-i="${i}" title="סימון הפריט כבוצע - התזכורת לא תקפוץ שוב">✔ בוצע</button></div></div>`;
       }).join('')}
-      <div style="display:flex; gap:8px; margin-top:14px;"><button type="button" class="btn" id="prOk" style="flex:1;">הבנתי</button></div>
+      <div style="display:flex; gap:8px; margin-top:14px;"><button type="button" class="btn secondary" id="prOk" style="flex:1;" title="סוגר את החלון - תזכורת ערב תוצג שוב למחרת בבוקר">הבנתי (להזכיר שוב)</button></div>
     </div>`;
   bar.style.display = 'flex';
+  bar.querySelectorAll('.pr-done').forEach(b=> b.onclick = ()=>{
+    const x = due[+b.dataset.i]; if(!x) return;
+    planReminderDone(x.log.id, x.row.id);
+    checkPlanReminders();
+  });
   document.getElementById('prOk').onclick = ()=>{
     const seen = planSeenLoad();
     due.forEach(x=>{ const k = x.log.id+'|'+x.row.id; seen[k] = Math.max(seen[k]||0, x.slot.id); });
