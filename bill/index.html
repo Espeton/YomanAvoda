@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>חשבון חלקי - קבלני משנה</title>
+<style>
+  :root{
+    --navy:#2C5282; --navy-dark:#1A365D; --ink:#B33A3A;
+    --bg:#F5F6F8; --card:#FFFFFF; --text:#1F2937; --muted:#6B7280; --border:#E2E8F0;
+    --ok:#2F855A; --warn:#B7791F; --bad:#C53030;
+    --topbar-h:0px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:Arial,"Segoe UI",Tahoma,sans-serif; background:var(--bg); color:var(--text); direction:rtl; min-height:100vh; font-size:14px;}
+  #topbar{position:sticky; top:0; z-index:40;}
+  header{background:linear-gradient(135deg,var(--navy-dark),var(--navy)); color:#fff; padding:10px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  header h1{margin:0; font-size:19px; letter-spacing:.3px;}
+  header .sub{font-size:12px; color:#CBD8EA; margin-top:2px;}
+  header .hbtns{display:flex; gap:8px; align-items:center;}
+  nav{display:flex; gap:4px; background:var(--navy-dark); padding:0 16px; overflow-x:auto;}
+  nav button{background:transparent; border:none; color:#CBD8EA; padding:12px 16px; font-size:13.5px; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; font-family:inherit;}
+  nav button.active{color:#fff; border-bottom:3px solid var(--ink); font-weight:bold;}
+  main{max-width:1400px; margin:20px auto; padding:0 16px 60px;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .card h2{margin-top:0; font-size:16px; color:var(--navy-dark); border-bottom:1px solid var(--border); padding-bottom:10px;}
+  h3{font-size:14px; color:var(--navy); margin:14px 0 8px;}
+  label{display:block; font-size:12.5px; color:var(--muted); margin-bottom:4px; font-weight:bold;}
+  input,select,textarea{padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:13.5px; background:#fff; color:var(--text); max-width:100%;}
+  input:disabled,select:disabled{background:#F3F4F6; color:#6B7280;}
+  textarea{width:100%; min-height:110px;}
+  button.btn{background:var(--navy); color:#fff; border:none; padding:9px 16px; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;}
+  button.btn:hover{background:var(--navy-dark);}
+  button.btn:disabled{opacity:.45; cursor:not-allowed;}
+  button.btn.secondary{background:#fff; color:var(--navy); border:1px solid var(--navy);}
+  button.btn.danger{background:#fff; color:var(--bad); border:1px solid var(--bad);}
+  button.btn.ok{background:var(--ok);}
+  button.btn.small{padding:5px 10px; font-size:12px;}
+  header button.btn.secondary{background:transparent; color:#fff; border-color:#CBD8EA;}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; align-items:center;}
+  .chips .lbl{font-size:12.5px; color:var(--muted); font-weight:bold; margin-inline-end:4px;}
+  .chip{border:1px solid var(--border); background:#fff; color:var(--navy-dark); border-radius:16px; padding:6px 16px; cursor:pointer; font-size:13px; font-family:inherit;}
+  .chip.on{background:var(--navy); border-color:var(--navy); color:#fff;}
+  .bar{display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; font-size:13px;}
+  .bar label.inl,label.inl{display:flex; gap:6px; align-items:center; margin:0; font-weight:normal; color:var(--text);}
+  .note{background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:10px 14px; border-radius:8px; font-size:12.5px; margin:12px 0 0;}
+  .warnbox{background:#FFFBEB; border:1px solid #F5D98B; color:#7A5A0A; padding:12px 16px; border-radius:8px; margin-bottom:14px;}
+  .empty{color:var(--muted); font-size:13px; padding:14px; text-align:center;}
+  table{width:100%; border-collapse:collapse; font-size:13px; border:1px solid var(--border);}
+  th,td{padding:6px 7px; border:1px solid var(--border); text-align:center;}
+  th{background:#F0F4F8; color:var(--navy-dark); font-size:12px;}
+  td.l{text-align:right;}
+  td.num,th.num{white-space:nowrap;}
+  tfoot td,tr.tot td{font-weight:bold; background:#F0F4F8; color:var(--navy-dark);}
+  .scroll{overflow-x:auto;}
+  .sum{font-size:12px; color:var(--muted);}
+  .neg{color:var(--bad);}
+  .pill{display:inline-block; padding:1px 9px; border-radius:10px; font-size:12px; color:#fff; background:var(--muted);}
+  .pill.draft{background:var(--warn);} .pill.approved{background:var(--ok);}
+  .kpis{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+  .kpi{flex:1 1 170px; border:1px solid var(--border); border-radius:8px; padding:9px 14px; background:#F8FAFD;}
+  .kpi .k{font-size:12px; color:var(--muted);} .kpi .v{font-size:19px; font-weight:bold; color:var(--navy-dark);}
+  .kpi.net{background:#F0FDF4; border-color:#86EFAC;} .kpi.net .v{color:#166534;}
+  /* progress grid */
+  .bgrid{min-width:760px;}
+  .bgrid td.pc{padding:3px 4px; min-width:98px; white-space:nowrap;}
+  .bgrid td.pc input{width:58px; text-align:center; padding:4px 2px;}
+  .bgrid td.pc button.mini{border:1px solid var(--border); background:#fff; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 5px; color:var(--ok);}
+  .bgrid td.pc button.mini:hover{background:#DCFCE7;}
+  .bgrid td.pc.full{background:#DCFCE7;} .bgrid td.pc.part{background:#E3EEFB;} .bgrid td.pc.chg{box-shadow:inset 0 0 0 2px var(--warn);}
+  .bgrid th .btn{margin-top:4px;}
+  .bgrid td.dsc{text-align:right; min-width:260px;}
+  .stick{position:sticky; inset-inline-start:0; background:#fff;}
+  .ov{position:fixed; inset:0; background:rgba(26,54,93,.55); z-index:60; display:none; align-items:center; justify-content:center; padding:12px;}
+  .ov.on{display:flex;}
+  .modal{background:#fff; border-radius:12px; width:100%; max-width:600px; max-height:92vh; overflow:auto; padding:18px 20px; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  .modal h2{margin:0 0 2px; font-size:17px; color:var(--navy-dark); border:none; padding:0;}
+  .modal .sub{color:var(--muted); font-size:13px; margin-bottom:12px;}
+  .f{margin-bottom:10px;} .f input[type=text],.f select,.f input[type=date],.f input[type=number]{width:100%;}
+  .row2{display:flex; gap:10px;} .row2 > div{flex:1;}
+  .right{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+  #printOut{display:none;}
+  .pb h1{margin:0 0 2px; font-size:20px; color:#1A365D;} .pb .meta{display:flex; gap:24px; flex-wrap:wrap; margin:6px 0 10px; font-size:13px;}
+  .pb table{margin:8px 0;} .pb th,.pb td{padding:4px 8px; font-size:12.5px;} .pb td.l{text-align:right;}
+  .pb .sign{display:flex; gap:40px; margin-top:40px;} .pb .sign div{flex:1; border-top:1px solid #333; padding-top:4px; text-align:center; font-size:12px;}
+  .pb .pg{break-after:page; page-break-after:always;} .pb .pg:last-child{break-after:auto; page-break-after:auto;}
+  /* sign-in gate */
+  #signInGate{position:fixed; inset:0; background:var(--bg); z-index:1000; display:flex; align-items:center; justify-content:center;}
+  #signInGate .card{max-width:420px; width:90%;}
+  #signInGate .hint{margin-top:10px; min-height:16px; font-size:12px; color:var(--muted);}
+  #driveProblemBar{display:none; position:fixed; inset:0; z-index:3000; background:rgba(15,23,42,.72); align-items:center; justify-content:center; padding:16px;}
+  #driveProblemBar .dp-box{background:#fff; border-top:6px solid #B91C1C; border-radius:12px; max-width:480px; width:100%; padding:22px 24px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.4);}
+  #driveProblemBar .dp-icon{font-size:42px; line-height:1; color:#B91C1C;}
+  #driveProblemBar h2{margin:6px 0 8px; font-size:20px; color:#991B1B; border:none; padding:0;}
+  #driveProblemBar p{margin:6px 0; font-size:14.5px;}
+  #driveProblemBar .dp-warn{background:#FEF2F2; border:1px solid #FCA5A5; border-radius:8px; padding:8px 10px; color:#991B1B;}
+  #driveProblemBar .dp-actions{display:flex; flex-direction:column; gap:8px; margin-top:14px;}
+  #driveProblemBar .dp-actions .btn{width:100%; font-size:15px;}
+  #driveProblemBar #dpFix{background:#B91C1C;}
+  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:#1F2937; color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:2500; display:none; max-width:90%;}
+  @media (max-width:860px){ header{padding:10px 14px;} }
+  @media print{
+    #topbar,.bar,.no-print,.chips,button,.toast{display:none !important;} body{background:#fff;} main{margin:0;} .card{box-shadow:none;}
+    body.print-bill{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    body.print-bill main, body.print-bill header, body.print-bill nav, body.print-bill .ov, body.print-bill #signInGate{display:none !important;}
+    body.print-bill #printOut{display:block;}
+  }
+</style>
+</head>
+<body>
+
+<div id="signInGate">
+  <div class="card">
+    <h2>חשבון חלקי — קבלני משנה</h2>
+    <div class="note">האפליקציה שומרת את כל הנתונים בקובץ אחד ב-Google Drive, כדי שכמה אנשים יוכלו לראות ולעדכן את אותם נתונים. יש להתחבר עם חשבון Google שהוגדר כמשתמש מורשה ולאשר גישה ל-Drive.</div>
+    <div style="margin-top:12px;"><button id="gateSignInBtn" class="btn">התחבר עם Google</button></div>
+    <div class="hint" id="gateStatus"></div>
+  </div>
+</div>
+
+<div id="topbar" style="visibility:hidden;">
+  <header>
+    <div>
+      <h1>חשבון חלקי — קבלני משנה</h1>
+      <div class="sub">חוזה · כתב כמויות · חשבונות חלקיים <span id="driveSaveStatus"></span></div>
+    </div>
+    <div class="hbtns no-print"><button class="btn secondary small" id="saveBtn" title="שומר מיד ומאשר שהכול הגיע ל-Drive">💾 שמור</button></div>
+  </header>
+  <nav id="tabs"></nav>
+</div>
+<main><div id="view"></div></main>
+<div id="printOut" class="pb"></div>
+
+<div class="ov" id="editor"><div class="modal" id="editorBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+/* ============================================================== helpers */
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = () => isoOf(new Date());
+const fmt = iso => { if(!iso) return ''; const [y,m,d] = iso.split('-'); return `${+d}/${+m}/${y.slice(2)}`; };
+const r2 = n => Math.round((+n||0)*100)/100;
+const r1 = n => Math.round((+n||0)*10)/10;
+const money = n => (n<0?'-':'') + '₪' + Math.abs(+n||0).toLocaleString('he-IL',{maximumFractionDigits:2});
+const pctTxt = p => (Math.round((+p||0)*10)/10) + '%';
+const uid = p => (p||'id') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const cleanName = s => String(s||'').replace(/\|/g,'/').trim();
+const byOrd = (a,b)=> (a.ord||0)-(b.ord||0);
+const nextOrd = arr => arr.reduce((m,x)=>Math.max(m,x.ord||0),0)+1;
+let toastTimer = null;
+function toast(msg){ const el = document.getElementById('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastTimer); toastTimer = setTimeout(()=>{ el.style.display='none'; }, 4200); }
+const modal = html=>{ document.getElementById('editorBox').innerHTML = html; document.getElementById('editor').classList.add('on'); };
+const closeModal = ()=> document.getElementById('editor').classList.remove('on');
+
+/* ============================================================== data model */
+/* ONE JSON file on Google Drive ("חשבון-חלקי-נתונים.json"), shared by all users. Flat collections of {id} rows, so two people editing
+   different rows merge cleanly (same 3-way merge engine as the other apps):
+   contractors[] {id, name, active, srcId}            contractors (synced from the daily-log app)
+   templates[]   {id, name, ord}                      bill-of-quantities templates (כתבי כמויות)
+   lines[]       {id, templateId, num, desc, pct, ord}  a line = a payment milestone worth pct % of the unit's price
+   accounts[]    {id, name, contractorId, retentionPct, qtyLabel, note, ord}  one contract / trade (e.g. electricity)
+   units[]       {id, accountId, name, templateId, qty, rate, ord}  a building / part of the contract: price = qty x rate
+   bills[]       {id, accountId, num, date, period, retentionPct, status:'draft'|'approved'}  a partial bill (חשבון חלקי)
+   entries[]     {id, billId, unitId, lineId, pct}     CUMULATIVE % reported for a line in a bill (a bill without an entry carries the previous one)
+   deductions[]  {id, billId, reason, amount, srcKey}  deductions from the payment (srcKey = imported from a daily log) */
+const COLLECTIONS = ['contractors','templates','lines','accounts','units','bills','entries','deductions'];
+let S = {}; COLLECTIONS.forEach(n=> S[n] = []);
+let me = null;
+
+const ELEC_BUILDING = [[1,'גמר הכנות ביציקות של קומת קרקע כולל בתקרה',3],[2,'גמר הכנות ביציקה של קומה',10],[3,'גמר הכנות ביציקה של גג',1],[4,'גמר חיווט והכנות לפני טיח',30],[5,'גמר הרכבת אביזרי קצה ולוחות בדירות',15],[6,'גמר הרכבת אביזרי קצה ולוחות בלוביים ובגג',8],[7,'הרכבת ואספקת לוחות חשמל לחדר משאבות',2],[8,'גמר הרכבת גופים, כריזה מנ"מ וגלאים, הפעלה זמנית',6],[9,'גמר הרכבת גופים, כריזה מנ"מ וגלאים ומעבר בדיקת מכון',5],[10,'קבלת אישור יועץ חשמל ויועץ הבטיחות לפרויקט',2],[11,'תיקון לקויים מסירה ראשונה לדירות',4],[12,'תיקון לקויים מסירה שניה לדירות',1],[13,'תיקון לקויים מסירה שלישית לדירות',1],[14,'תיקון לקויים מסירה שניה לציבורי',1],[15,'תיקון לקויים מסירה שלישית לציבורי',1],[16,'התקנת גופי תאורה בלובי ראשי',2],[17,'קבלת טופס 4',4],[18,'עם קבלת חשמל מחברת חשמל לבניין',2],[19,'מסירת קומה למנהל עבודה',2]];
+const ELEC_BASEMENT = [[1,'גמר הכנות ביציקה של חניון',5],[2,'גמר הכנות ביציקה לפני טיח חניון',5],[3,'גמר הכנות לפני טיח בחניון תת קרקעי כולל חיווט',5],[4,'גמר הכנת עמדות טעינה לרכבים',5],[5,'גמר הרכבת אביזרי קצה ולוחות בחניון תת קרקעי',15],[6,'גמר תשתיות ושוחות בשטחי פיתוח לחשמל + תקשורת',19],[7,'גמר השחלת חיווט בשטחי פיתוח והרכבת עמודי+גופי תאורה בפיתוח',20],[8,'גמר השלמות תקשורת ומנ"מ בפיתוח וקבלת אישור בזק הוט וסלקום',4],[9,'גמר השלמות לחשמל בפיתוח+השחלת חוטים של ח. חשמל וקבלת אישור חברת חשמל',5],[11,'התקנת גופי חשמל נסתרים בפיתוח (מחוץ לבניינים)',4],[12,'עם קבלת חשמל מחברת חשמל בכול הפרויקט',5],[13,'הזנת חדר טרפו לבניינים',4],[14,'גמר חשבון סופי',4]];
+/* apartments per building of "פסגת רמות" (from "דירות פרויקט פסגת רמות.xlsx"): 11 buildings, 174 apartments */
+const ELEC_APTS = [12,12,18,18,18,18,18,19,15,13,13];
+/* First-time data: the electricity account of the project, built from the two agreements the user supplied
+   (buildings: 30,000 per apartment x 174 = 5,220,000, split between the 11 buildings by their apartment count; basement: 6,000 x 174 = 1,044,000, same percentages) */
+function seedData(){
+  const d = {}; COLLECTIONS.forEach(n=> d[n] = []);
+  d.templates.push({id:'tpl_elec_bld', name:'חשמל ומתח נמוך - מבנה (דירות)', ord:1}, {id:'tpl_elec_base', name:'חשמל ומתח נמוך - חניון תת קרקעי', ord:2});
+  ELEC_BUILDING.forEach((r,i)=> d.lines.push({id:'ln_b'+r[0], templateId:'tpl_elec_bld', num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
+  ELEC_BASEMENT.forEach((r,i)=> d.lines.push({id:'ln_p'+r[0], templateId:'tpl_elec_base', num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
+  d.accounts.push({id:'acc_elec', name:'חשמל ומתח נמוך', contractorId:'', retentionPct:0, qtyLabel:'דירות', note:'', ord:1});
+  ELEC_APTS.forEach((n,i)=> d.units.push({id:'u_b'+(i+1), accountId:'acc_elec', name:'מבנה '+(i+1), templateId:'tpl_elec_bld', qty:n, rate:30000, ord:i+1}));
+  d.units.push({id:'u_base', accountId:'acc_elec', name:'חניון תת קרקעי', templateId:'tpl_elec_base', qty:174, rate:6000, ord:12});
+  return d;
+}
+function buildPayload(){ const p = {version:1, exportedAt:new Date().toISOString()}; COLLECTIONS.forEach(n=> p[n] = S[n]); return p; }
+function applyData(d){
+  d = d || {};
+  const fresh = !COLLECTIONS.some(n=> Array.isArray(d[n]) && d[n].length);
+  const base = fresh ? seedData() : d;
+  COLLECTIONS.forEach(n=> S[n] = Array.isArray(base[n]) ? base[n] : []);
+  invalidate();
+  if(fresh) setTimeout(saveAll, 0);
+}
+
+/* ---- lookups and calculations */
+const accById = id => S.accounts.find(a=>a.id===id);
+const tplById = id => S.templates.find(t=>t.id===id);
+const unitsOf = aid => S.units.filter(u=>u.accountId===aid).sort(byOrd);
+const linesOf = tid => S.lines.filter(l=>l.templateId===tid).sort(byOrd);
+const billById = id => S.bills.find(b=>b.id===id);
+const billsOf = aid => S.bills.filter(b=>b.accountId===aid).sort((a,b)=>a.num-b.num);
+const conById = id => S.contractors.find(c=>c.id===id);
+const conName = acc => { const c = acc && conById(acc.contractorId); return c ? c.name : ''; };
+const unitAmount = u => r2((+u.qty||0)*(+u.rate||0));
+const lineSum = tid => r2(linesOf(tid).reduce((s,l)=>s+(+l.pct||0),0));
+let _ent = null;
+function invalidate(){ _ent = null; }
+function entMap(){ if(!_ent){ _ent = new Map(); S.entries.forEach(e=> _ent.set(e.billId+'|'+e.unitId+'|'+e.lineId, +e.pct||0)); } return _ent; }
+/* cumulative % of a line in a bill: its own entry, else the nearest earlier bill's */
+function pctAt(bill, unitId, lineId){
+  if(!bill) return 0;
+  const m = entMap(), list = billsOf(bill.accountId);
+  for(let i = list.findIndex(b=>b.id===bill.id); i>=0; i--){ const v = m.get(list[i].id+'|'+unitId+'|'+lineId); if(v!=null) return v; }
+  return 0;
+}
+const prevBillOf = bill => { const list = billsOf(bill.accountId), i = list.findIndex(b=>b.id===bill.id); return i>0 ? list[i-1] : null; };
+function billCalc(bill){
+  const acc = accById(bill.accountId), prev = prevBillOf(bill);
+  const rows = unitsOf(acc.id).map(u=>{
+    const amount = unitAmount(u); let cum = 0, pv = 0;
+    linesOf(u.templateId).forEach(l=>{ const la = amount*(+l.pct||0)/100; cum += la*pctAt(bill,u.id,l.id)/100; if(prev) pv += la*pctAt(prev,u.id,l.id)/100; });
+    cum = r2(cum); pv = r2(pv);
+    return {u, amount, cum, prev:pv, val:r2(cum-pv), cumPct: amount ? cum/amount*100 : 0, prevPct: amount ? pv/amount*100 : 0};
+  });
+  const tot = k => r2(rows.reduce((s,r)=>s+r[k],0));
+  const work = tot('val'), ret = r2(work*(+bill.retentionPct||0)/100);
+  const dedList = S.deductions.filter(d=>d.billId===bill.id), ded = r2(dedList.reduce((s,d)=>s+(+d.amount||0),0));
+  return {acc, prev, rows, contract:tot('amount'), cumTot:tot('cum'), prevTot:tot('prev'), work, ret, ded, dedList, net:r2(work-ret-ded)};
+}
+
+/* ============================================================== UI state */
+let tab = 'bills', curA = '', curB = '', curT = '';
+function ensureSelection(){
+  if(!accById(curA)) curA = ([...S.accounts].sort(byOrd)[0]||{}).id || '';
+  if(curB && !billById(curB)) curB = '';
+  if(curB && billById(curB).accountId!==curA) curB = '';
+  if(!tplById(curT)) curT = ([...S.templates].sort(byOrd)[0]||{}).id || '';
+}
+const contractorOptions = sel => `<option value="">בחר קבלן...</option>` + [...S.contractors].filter(c=>c.active!==false||c.id===sel).sort((a,b)=>a.name.localeCompare(b.name,'he')).map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.name)}</option>`).join('');
+const templateOptions = sel => S.templates.slice().sort(byOrd).map(t=>`<option value="${t.id}" ${t.id===sel?'selected':''}>${esc(t.name)}</option>`).join('');
+const accChips = (attr, withNew)=> `<div class="chips"><span class="lbl">חשבון:</span>${S.accounts.slice().sort(byOrd).map(a=>`<button class="chip ${a.id===curA?'on':''}" ${attr}="${a.id}">${esc(a.name)}${conName(a)?` <small>· ${esc(conName(a))}</small>`:''}</button>`).join('')}${withNew?'<button class="btn small" id="accNew">+ חשבון חדש</button>':''}</div>`;
+
+/* ============================================================== rendering */
+function renderTabs(){
+  const items = [['bills','חשבונות חלקיים'],['accounts','חשבונות וחוזים'],['templates','כתבי כמויות'],['settings','הגדרות']];
+  document.getElementById('tabs').innerHTML = items.map(([id,l])=>`<button class="${tab===id?'active':''}" data-tab="${id}">${l}</button>`).join('');
+  document.querySelectorAll('#tabs button').forEach(b=> b.onclick = ()=>{ tab = b.dataset.tab; if(tab!=='bills') curB = ''; render(); });
+}
+function render(){
+  ensureSelection(); renderTabs();
+  const v = document.getElementById('view');
+  v.innerHTML = tab==='bills' ? billsView() : tab==='accounts' ? accountsView() : tab==='templates' ? templatesView() : settingsView();
+  wire();
+  const tb = document.getElementById('topbar'); if(tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight+'px');
+}
+
+/* ---------- accounts and contracts */
+function accountsView(){
+  if(!S.accounts.length) return `<div class="warnbox"><b>להתחלה:</b> עדיין אין חשבון. לחץ "+ חשבון חדש" כדי להגדיר חוזה (למשל חשמל), את היחידות שלו (מבנים) ואת כתב הכמויות של כל יחידה.</div><button class="btn" id="accNew">+ חשבון חדש</button>`;
+  const a = accById(curA), units = unitsOf(a.id), total = r2(units.reduce((s,u)=>s+unitAmount(u),0));
+  const bills = billsOf(a.id), last = bills[bills.length-1], lc = last ? billCalc(last) : null;
+  const kpis = `<div class="kpis"><div class="kpi"><div class="k">סכום החוזה (לפני מע"מ)</div><div class="v">${money(total)}</div></div>
+    <div class="kpi"><div class="k">חשבונות חלקיים</div><div class="v">${bills.length}</div></div>
+    <div class="kpi"><div class="k">ערך מצטבר בחשבון האחרון</div><div class="v">${lc?money(lc.cumTot):'—'}</div><div class="sum">${lc&&total?pctTxt(lc.cumTot/total*100)+' מהחוזה':''}</div></div></div>`;
+  const rows = units.map(u=>{
+    const t = tplById(u.templateId), ok = t ? lineSum(t.id)===100 : false;
+    return `<tr><td><input type="text" data-uf="name" data-uid="${u.id}" value="${esc(u.name)}" style="width:150px"></td>
+      <td><select data-uf="templateId" data-uid="${u.id}">${templateOptions(u.templateId)}</select>${t&&!ok?`<div class="sum neg">סכום הסעיפים ${lineSum(t.id)}%</div>`:''}</td>
+      <td><input type="number" min="0" step="any" data-uf="qty" data-uid="${u.id}" value="${u.qty}" style="width:90px;text-align:center"></td>
+      <td><input type="number" min="0" step="any" data-uf="rate" data-uid="${u.id}" value="${u.rate}" style="width:110px;text-align:center"></td>
+      <td class="num" id="amt_${u.id}"><b>${money(unitAmount(u))}</b></td>
+      <td><button class="btn danger small" data-udel="${u.id}">מחק</button></td></tr>`; }).join('');
+  return accChips('data-acc', true) + kpis + `
+    <div class="card"><h2>פרטי החשבון</h2>
+      <div class="bar">
+        <div><label>שם החשבון (תחום)</label><input type="text" data-af="name" value="${esc(a.name)}" style="width:220px"></div>
+        <div><label>קבלן</label><select data-af="contractorId" style="min-width:200px">${contractorOptions(a.contractorId)}</select></div>
+        <div><label>עיכבון / ערבות (%) ברירת מחדל לחשבון חדש</label><input type="number" min="0" max="100" step="any" data-af="retentionPct" value="${a.retentionPct||0}" style="width:90px;text-align:center"></div>
+        <div><label>יחידת כמות</label><input type="text" data-af="qtyLabel" value="${esc(a.qtyLabel||'')}" style="width:110px" placeholder="דירות"></div>
+        <button class="btn danger small" id="accDel">מחק חשבון</button></div>
+      <label>הערות</label><input type="text" data-af="note" value="${esc(a.note||'')}" style="width:100%">
+      ${!a.contractorId?'<div class="note" style="background:#FFFBEB;border-color:#F5D98B;color:#7A5A0A;">לא נבחר קבלן. אם הרשימה ריקה - ב"הגדרות" אפשר לייבא קבלנים מהיומן היומי.</div>':''}</div>
+    <div class="card"><h2>יחידות החוזה וכתב הכמויות שלהן</h2>
+      <div class="sum" style="margin-bottom:8px;">לכל יחידה (מבנה / חלק) כתב כמויות משלה, ומחירה = כמות × תעריף. סעיפי כתב הכמויות הם אחוזים ממחיר היחידה. כל החשבונות החלקיים מחושבים לפי היחידות כאן.</div>
+      <div class="bar"><button class="btn secondary small" id="unitAdd">+ יחידה</button><button class="btn secondary small" id="unitBulk">+ כמה יחידות בבת אחת</button></div>
+      ${units.length ? `<div class="scroll"><table><thead><tr><th>יחידה</th><th>כתב כמויות</th><th>כמות${a.qtyLabel?' ('+esc(a.qtyLabel)+')':''}</th><th>תעריף ליחידת כמות (₪)</th><th>מחיר היחידה</th><th></th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4">סה"כ חוזה</td><td class="num" id="unitsTotal">${money(total)}</td><td></td></tr></tfoot></table></div>` : '<div class="empty">עדיין אין יחידות.</div>'}</div>`;
+}
+
+/* ---------- partial bills */
+function billsView(){
+  if(!S.accounts.length) return `<div class="warnbox"><b>להתחלה:</b> עבור ל"חשבונות וחוזים" והגדר חשבון (חוזה) עם יחידות וכתב כמויות.</div>`;
+  const a = accById(curA);
+  if(curB) return billEditorView(billById(curB));
+  const bills = billsOf(a.id), units = unitsOf(a.id), contract = r2(units.reduce((s,u)=>s+unitAmount(u),0));
+  const calcs = bills.map(b=>({b, c:billCalc(b)}));
+  const sumW = r2(calcs.reduce((s,x)=>s+x.c.work,0)), sumR = r2(calcs.reduce((s,x)=>s+x.c.ret,0)), sumD = r2(calcs.reduce((s,x)=>s+x.c.ded,0)), sumN = r2(calcs.reduce((s,x)=>s+x.c.net,0));
+  const lastCum = calcs.length ? calcs[calcs.length-1].c.cumTot : 0;
+  const rows = calcs.map(({b,c})=>`<tr><td><b>${b.num}</b></td><td>${fmt(b.date)}</td><td class="l">${esc(b.period||'')}</td><td class="num">${money(c.cumTot)}</td><td class="num">${money(c.work)}</td><td class="num">${b.retentionPct||0}% · ${money(c.ret)}</td><td class="num">${money(c.ded)}</td><td class="num"><b>${money(c.net)}</b></td><td><span class="pill ${b.status}">${b.status==='approved'?'מאושר':'טיוטה'}</span></td><td><button class="btn small" data-openbill="${b.id}">פתח</button></td></tr>`).join('');
+  return accChips('data-bacc', false) + `
+    <div class="kpis"><div class="kpi"><div class="k">קבלן</div><div class="v" style="font-size:16px">${esc(conName(a))||'—'}</div></div>
+      <div class="kpi"><div class="k">סכום החוזה</div><div class="v">${money(contract)}</div></div>
+      <div class="kpi"><div class="k">בוצע מצטבר</div><div class="v">${money(lastCum)}</div><div class="sum">${contract?pctTxt(lastCum/contract*100)+' מהחוזה':''}</div></div>
+      <div class="kpi"><div class="k">יתרת חוזה</div><div class="v">${money(contract-lastCum)}</div></div></div>
+    <div class="card"><h2>החשבונות החלקיים של "${esc(a.name)}"</h2>
+      <div class="bar"><button class="btn" id="billNew" ${!units.length?'disabled':''}>+ חשבון חלקי חדש</button>${!units.length?'<span class="sum">יש להגדיר יחידות בחשבון לפני פתיחת חשבון חלקי.</span>':''}</div>
+      ${bills.length ? `<div class="scroll"><table><thead><tr><th>מס'</th><th>תאריך</th><th>תקופה / הערה</th><th>ערך מצטבר</th><th>ערך החשבון</th><th>עיכבון</th><th>קיזוזים</th><th>לתשלום</th><th>סטטוס</th><th></th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4">סה"כ</td><td class="num">${money(sumW)}</td><td class="num">${money(sumR)}</td><td class="num">${money(sumD)}</td><td class="num">${money(sumN)}</td><td colspan="2"></td></tr></tfoot></table></div>
+        <div class="sum" style="margin-top:6px;">כל הסכומים לפני מע"מ. "ערך החשבון" = ההפרש בין הביצוע המצטבר לחשבון הקודם.</div>` : '<div class="empty">עדיין לא נפתח חשבון חלקי.</div>'}</div>`;
+}
+
+function billEditorView(bill){
+  const acc = accById(bill.accountId), locked = bill.status==='approved', units = unitsOf(acc.id);
+  const isLast = billsOf(acc.id).slice(-1)[0].id===bill.id;
+  const noTpl = units.filter(u=>!tplById(u.templateId));
+  return `<div class="card"><div class="bar" style="margin-bottom:8px;"><button class="btn secondary small" id="billBack">→ חזרה לרשימה</button>
+      <h2 style="border:none;padding:0;margin:0;">חשבון חלקי מס' ${bill.num} · ${esc(acc.name)}${conName(acc)?' · '+esc(conName(acc)):''}</h2>
+      <span class="pill ${bill.status}">${locked?'מאושר':'טיוטה'}</span></div>
+    <div class="bar"><div><label>תאריך</label><input type="date" data-bf="date" value="${esc(bill.date||'')}" ${locked?'disabled':''}></div>
+      <div><label>תקופה / הערה</label><input type="text" data-bf="period" value="${esc(bill.period||'')}" placeholder="למשל: חשבון ינואר 2027" style="width:240px" ${locked?'disabled':''}></div>
+      <div><label>עיכבון / ערבות (%)</label><input type="number" min="0" max="100" step="any" data-bf="retentionPct" value="${bill.retentionPct||0}" style="width:90px;text-align:center" ${locked?'disabled':''}></div>
+      <button class="btn secondary small" id="billPrint">🖨 הדפס</button>
+      ${locked ? '<button class="btn secondary small" id="billReopen">פתח מחדש לעריכה</button>' : '<button class="btn ok small" id="billApprove">✔ אשר חשבון</button>'}
+      ${(!locked && isLast) ? '<button class="btn danger small" id="billDel">מחק חשבון</button>' : ''}</div>
+    <div class="sum">בכל סעיף מזינים את האחוז <b>המצטבר</b> שבוצע מתחילת העבודה (0-100), או לוחצים ✔ ל-100%. התשלום לחשבון = ההפרש מהחשבון הקודם. תא עם מסגרת כתומה שונה מהחשבון הקודם.${locked?' <b>החשבון מאושר ונעול - "פתח מחדש" כדי לערוך.</b>':''}</div></div>
+    ${noTpl.length?`<div class="warnbox">ליחידות ${noTpl.map(u=>esc(u.name)).join(', ')} אין כתב כמויות - בחר להן כתב כמויות ב"חשבונות וחוזים".</div>`:''}
+    <div id="billGrid">${gridHtml(bill, acc, locked)}</div>
+    <div class="card"><h2>קיזוזים</h2><div id="billDed">${dedHtml(bill, locked)}</div></div>
+    <div class="card"><h2>סיכום החשבון</h2><div id="billTotals">${totalsHtml(bill)}</div></div>`;
+}
+const bandCls = (v, pv) => (v>=100 ? 'full' : v>0 ? 'part' : '') + (v!==pv ? ' chg' : '');
+function cellHtml(bill, prev, u, l, locked){
+  const v = pctAt(bill,u.id,l.id), pv = prev ? pctAt(prev,u.id,l.id) : 0;
+  return `<td class="pc ${bandCls(v,pv)}" id="c_${u.id}_${l.id}"><input type="number" min="0" max="100" step="any" value="${v||''}" placeholder="0" data-cu="${u.id}" data-cl="${l.id}" title="בחשבון הקודם: ${pv}%" ${locked?'disabled':''}><button class="mini" data-full="${u.id}|${l.id}" title="100%" ${locked?'disabled':''}>✔</button></td>`;
+}
+function gridHtml(bill, acc, locked){
+  const units = unitsOf(acc.id), prev = prevBillOf(bill), tplIds = [...new Set(units.map(u=>u.templateId))].filter(tplById);
+  return tplIds.map(tid=>{
+    const t = tplById(tid), us = units.filter(u=>u.templateId===tid), lns = linesOf(tid);
+    const head = us.map(u=>`<th>${esc(u.name)}<div class="sum">${money(unitAmount(u))}</div>${locked?'':`<button class="btn secondary small" data-ucol="${u.id}" title="100% לכל סעיפי היחידה">100%</button>`}</th>`).join('');
+    const body = lns.map(l=>`<tr><td class="num">${esc(l.num)}</td><td class="dsc">${esc(l.desc)} ${locked?'':`<button class="btn secondary small" data-lrow="${l.id}" title="100% בכל היחידות" style="padding:1px 6px;">הכול</button>`}</td><td class="num">${l.pct}%</td>${us.map(u=>cellHtml(bill,prev,u,l,locked)).join('')}</tr>`).join('');
+    return `<div class="card"><h2>${esc(t.name)} <span class="sum">· ${us.length} יחידות</span></h2><div class="scroll"><table class="bgrid"><thead><tr><th>סעיף</th><th>תיאור</th><th>% מהמחיר</th>${head}</tr></thead><tbody>${body}</tbody>
+      <tfoot><tr><td colspan="3">% מצטבר ליחידה</td>${us.map(u=>`<td id="cp_${u.id}"></td>`).join('')}</tr><tr><td colspan="3">ערך מצטבר</td>${us.map(u=>`<td class="num" id="cv_${u.id}"></td>`).join('')}</tr></tfoot></table></div></div>`;
+  }).join('');
+}
+function dedHtml(bill, locked){
+  const list = S.deductions.filter(d=>d.billId===bill.id);
+  return `${list.length ? `<table><thead><tr><th>סיבה / תיאור</th><th>סכום (₪)</th><th></th></tr></thead><tbody>${list.map(d=>`<tr><td><input type="text" data-df="reason" data-did="${d.id}" value="${esc(d.reason||'')}" style="width:100%" ${locked?'disabled':''}></td><td><input type="number" min="0" step="any" data-df="amount" data-did="${d.id}" value="${d.amount||''}" style="width:130px;text-align:center" ${locked?'disabled':''}></td><td>${locked?'':`<button class="btn danger small" data-ddel="${d.id}">הסר</button>`}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">אין קיזוזים בחשבון זה.</div>'}
+    ${locked?'':'<div class="bar" style="margin-top:8px;"><button class="btn secondary small" id="dedAdd">+ שורת קיזוז</button><button class="btn secondary small" id="dedImport">ייבא קיזוזים מהיומן היומי</button></div>'}`;
+}
+function totalsHtml(bill){
+  const c = billCalc(bill);
+  const rows = c.rows.map(r=>`<tr><td class="l">${esc(r.u.name)}</td><td class="num">${money(r.amount)}</td><td>${pctTxt(r.prevPct)}</td><td>${pctTxt(r.cumPct)}</td><td class="num">${money(r.prev)}</td><td class="num">${money(r.cum)}</td><td class="num ${r.val<0?'neg':''}"><b>${money(r.val)}</b></td></tr>`).join('');
+  return `<div class="scroll"><table><thead><tr><th>יחידה</th><th>מחיר היחידה</th><th>% קודם</th><th>% מצטבר</th><th>ערך קודם</th><th>ערך מצטבר</th><th>ערך בחשבון זה</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td class="l">סה"כ</td><td class="num">${money(c.contract)}</td><td>${pctTxt(c.contract?c.prevTot/c.contract*100:0)}</td><td>${pctTxt(c.contract?c.cumTot/c.contract*100:0)}</td><td class="num">${money(c.prevTot)}</td><td class="num">${money(c.cumTot)}</td><td class="num">${money(c.work)}</td></tr></tfoot></table></div>
+    <div class="kpis" style="margin-top:12px;"><div class="kpi"><div class="k">ערך עבודה בחשבון</div><div class="v">${money(c.work)}</div></div>
+      <div class="kpi"><div class="k">עיכבון ${bill.retentionPct||0}%</div><div class="v">-${money(c.ret).replace('-','')}</div></div>
+      <div class="kpi"><div class="k">קיזוזים</div><div class="v">-${money(c.ded).replace('-','')}</div></div>
+      <div class="kpi net"><div class="k">לתשלום (לפני מע"מ)</div><div class="v">${money(c.net)}</div></div></div>`;
+}
+/* live refresh after a % change: footers of the grid and the totals card - without re-rendering the inputs (keeps keyboard focus) */
+function refreshLive(){
+  const bill = billById(curB); if(!bill) return;
+  const c = billCalc(bill);
+  c.rows.forEach(r=>{ const p = document.getElementById('cp_'+r.u.id), v = document.getElementById('cv_'+r.u.id); if(p) p.textContent = pctTxt(r.cumPct); if(v) v.textContent = money(r.cum); });
+  const t = document.getElementById('billTotals'); if(t) t.innerHTML = totalsHtml(bill);
+}
+function setPct(bill, unitId, lineId, raw){
+  const prev = prevBillOf(bill), pv = prev ? pctAt(prev,unitId,lineId) : 0;
+  let v = raw===''||raw==null ? 0 : +raw; if(!isFinite(v)) v = 0; v = Math.min(100, Math.max(0, r2(v)));
+  if(v < pv){ toast(`האחוז המצטבר לא יכול לרדת מתחת לחשבון הקודם (${pv}%)`); v = pv; }
+  const id = `e_${bill.id}_${unitId}_${lineId}`, ex = S.entries.find(e=>e.id===id);
+  if(ex) ex.pct = v; else S.entries.push({id, billId:bill.id, unitId, lineId, pct:v});
+  invalidate(); saveAll();
+  const td = document.getElementById(`c_${unitId}_${lineId}`);
+  if(td){ td.className = 'pc ' + bandCls(v,pv); const inp = td.querySelector('input'); inp.value = v||''; }
+  return v;
+}
+
+/* ---------- bill-of-quantities templates */
+function templatesView(){
+  const chips = `<div class="chips"><span class="lbl">כתב כמויות:</span>${S.templates.slice().sort(byOrd).map(t=>`<button class="chip ${t.id===curT?'on':''}" data-tpl="${t.id}">${esc(t.name)}</button>`).join('')}<button class="btn small" id="tplNew">+ כתב כמויות חדש</button></div>`;
+  if(!S.templates.length) return chips + '<div class="warnbox"><b>כתב כמויות</b> הוא רשימת סעיפי תשלום (אבני דרך), כל סעיף כאחוז ממחיר היחידה. צור כתב כמויות חדש או ייבא מ-Excel.</div>';
+  const t = tplById(curT), lns = linesOf(t.id), sum = lineSum(t.id);
+  const used = S.units.filter(u=>u.templateId===t.id);
+  const rows = lns.map(l=>`<tr><td><input type="text" data-lf="num" data-lid="${l.id}" value="${esc(l.num)}" style="width:54px;text-align:center"></td><td><input type="text" data-lf="desc" data-lid="${l.id}" value="${esc(l.desc)}" style="width:100%"></td><td><input type="number" min="0" max="100" step="any" data-lf="pct" data-lid="${l.id}" value="${l.pct}" style="width:80px;text-align:center"></td><td class="num sum">${used.length?'':'—'}</td><td><button class="btn danger small" data-ldel="${l.id}">מחק</button></td></tr>`).join('');
+  return chips + `<div class="card"><h2>${esc(t.name)}</h2>
+    <div class="bar"><div><label>שם</label><input type="text" data-tf="name" value="${esc(t.name)}" style="width:320px"></div>
+      <button class="btn secondary small" id="tplDup">שכפל</button><button class="btn secondary small" id="tplImport">ייבא סעיפים מ-Excel / הדבקה</button><button class="btn danger small" id="tplDel">מחק כתב כמויות</button></div>
+    <div class="sum" style="margin-bottom:8px;">${used.length?`בשימוש ב-${used.length} יחידות: ${used.slice(0,8).map(u=>esc(u.name)).join(', ')}${used.length>8?'...':''}. שינוי כאן משפיע על כולן.`:'לא בשימוש.'}</div>
+    <div class="scroll"><table><thead><tr><th>סעיף</th><th>תיאור הסעיף</th><th>% ממחיר היחידה</th><th></th><th></th></tr></thead><tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="2">סה"כ</td><td id="tplSum" class="${sum===100?'':'neg'}">${sum}%</td><td colspan="2"></td></tr></tfoot></table></div>
+    <div class="bar" style="margin-top:8px;"><button class="btn secondary small" id="lnAdd">+ סעיף</button>${sum!==100?'<span class="sum neg">סכום הסעיפים אינו 100% - החשבון יחושב לפי הסכום הקיים.</span>':''}</div></div>`;
+}
+/* "num, description, %" rows from Excel / pasted text: a row counts when it has an integer item number, a text description and a percent */
+function parseBoq(text){
+  const out = [];
+  String(text||'').split(/\r?\n/).forEach(line=>{
+    const c = line.split('\t').map(x=>x.trim()).filter(x=>x!=='');
+    if(c.length<3) return;
+    const ni = c.findIndex(x=>/^\d+$/.test(x)); if(ni<0) return;
+    const di = c.findIndex((x,i)=> i>ni && /[A-Za-z֐-׿]/.test(x)); if(di<0) return;
+    let pct = null;
+    for(let i=di+1;i<c.length;i++){ const m = c[i].match(/^(\d+(?:[.,]\d+)?)\s*%$/); if(m){ pct = +m[1].replace(',','.'); break; } }
+    if(pct==null){ for(let i=c.length-1;i>di;i--){ if(/^\d+(?:[.,]\d+)?$/.test(c[i])){ const v = +c[i].replace(',','.'); if(v>0 && v<=100){ pct = v; break; } } } }
+    if(pct==null) return;
+    out.push({num:c[ni], desc:c[di].replace(/\s+/g,' '), pct:r2(pct)});
+  });
+  return out;
+}
+const SHEETJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function loadScriptOnce(url){
+  return new Promise((resolve,reject)=>{
+    if(window.XLSX) return resolve();
+    const s = document.createElement('script'); s.src = url; s.onload = ()=> resolve(); s.onerror = ()=> reject(new Error('טעינת רכיב קריאת Excel נכשלה - בדוק חיבור לאינטרנט, או הדבק את הטבלה'));
+    document.head.appendChild(s);
+  });
+}
+async function readBoqFile(file){
+  if(/\.(xlsx|xls)$/i.test(file.name)){
+    await loadScriptOnce(SHEETJS_URL);
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:'', raw:false});
+    return rows.map(r=> r.map(x=> String(x).trim()).join('\t')).join('\n');
+  }
+  return await file.text();
+}
+function openBoqImport(tid){
+  modal(`<h2>ייבוא סעיפי כתב כמויות</h2><div class="sub">מקובץ Excel / CSV או מהדבקה</div>
+    <div class="sum" style="margin-bottom:8px;">מזהים שורות שיש בהן מספר סעיף, תיאור ואחוז (למשל <b>1 · גמר חיווט · 30%</b>). שורת סיכום בלי מספר סעיף נדלגת.</div>
+    <div id="bqDrop" style="border:2px dashed var(--navy); border-radius:10px; padding:18px; text-align:center; cursor:pointer; background:#F8FAFD; margin-bottom:10px;"><b>גרור לכאן קובץ Excel, או לחץ לבחירה</b><input type="file" id="bqFile" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;"></div>
+    <label>או הדבק כאן מ-Excel</label><textarea id="bqText" placeholder="1&#9;גמר חיווט והכנות לפני טיח&#9;30%"></textarea>
+    <div class="bar" style="margin-top:8px;"><label class="inl"><input type="radio" name="bqMode" value="replace" checked> החלף את הסעיפים הקיימים</label><label class="inl"><input type="radio" name="bqMode" value="append"> הוסף אחרי הקיימים</label></div>
+    <div class="sum" id="bqInfo"></div>
+    <div class="right"><button class="btn" id="bqGo">ייבא</button><button class="btn secondary" id="bqCancel">ביטול</button></div>`);
+  const txt = document.getElementById('bqText'), info = document.getElementById('bqInfo');
+  const upd = ()=>{ const n = parseBoq(txt.value).length; info.textContent = txt.value.trim() ? `זוהו ${n} סעיפים` : ''; };
+  txt.oninput = upd;
+  const load = async f=>{ try{ txt.value = await readBoqFile(f); upd(); }catch(e){ info.textContent = e.message; } };
+  const drop = document.getElementById('bqDrop'), fi = document.getElementById('bqFile');
+  drop.onclick = ()=> fi.click(); fi.onchange = ()=>{ if(fi.files[0]) load(fi.files[0]); };
+  drop.ondragover = e=>{ e.preventDefault(); }; drop.ondrop = e=>{ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) load(f); };
+  document.getElementById('bqCancel').onclick = closeModal;
+  document.getElementById('bqGo').onclick = ()=>{
+    const rows = parseBoq(txt.value); if(!rows.length){ toast('לא זוהו סעיפים - בדוק את הפורמט'); return; }
+    const mode = document.querySelector('input[name=bqMode]:checked').value;
+    if(mode==='replace'){ const old = new Set(linesOf(tid).map(l=>l.id)); S.lines = S.lines.filter(l=>!old.has(l.id)); S.entries = S.entries.filter(e=>!old.has(e.lineId)); }
+    let ord = nextOrd(linesOf(tid));
+    rows.forEach(r=> S.lines.push({id:uid('ln'), templateId:tid, num:r.num, desc:r.desc, pct:r.pct, ord:ord++}));
+    invalidate(); saveAll(); closeModal(); render(); toast(`יובאו ${rows.length} סעיפים`);
+  };
+}
+
+/* ---------- settings */
+function settingsView(){
+  const rows = S.contractors.slice().sort((a,b)=>a.name.localeCompare(b.name,'he')).map(c=>{
+    const used = S.accounts.some(a=>a.contractorId===c.id);
+    return `<tr><td class="l">${esc(c.name)}${c.srcId?' <span class="sum">· מהיומן</span>':''}</td><td><label class="inl" style="justify-content:center;"><input type="checkbox" data-cact="${c.id}" ${c.active!==false?'checked':''}> פעיל</label></td><td>${used?'<span class="sum">בשימוש בחשבון</span>':`<button class="btn danger small" data-cdel="${c.id}">מחק</button>`}</td></tr>`; }).join('');
+  const conCard = `<div class="card"><h2>קבלנים</h2><div class="sum" style="margin-bottom:6px;">רשימת הקבלנים לבחירה בחשבונות. אפשר לייבא מהיומן היומי (כך שהקבלן אחד בכל המערכת), או להוסיף ידנית.</div>
+    <div class="bar"><button class="btn" id="syncLog">🔄 ייבא קבלנים מהיומן היומי</button></div>
+    ${S.contractors.length?`<table><thead><tr><th>קבלן</th><th>סטטוס</th><th></th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="empty">אין קבלנים עדיין.</div>'}
+    <textarea id="newCons" placeholder="שם קבלן בכל שורה" style="min-height:70px; margin-top:8px;"></textarea>
+    <div class="bar" style="margin-top:6px;"><button class="btn secondary small" id="addCons">+ הוסף קבלנים</button></div></div>`;
+  const backupCard = `<div class="card"><h2>גיבוי</h2><div class="bar"><button class="btn secondary" id="bkExport">הורד גיבוי (JSON)</button></div>
+    <div class="sum">הנתונים נשמרים אוטומטית ב-Google Drive. הגיבוי הוא עותק מקומי נוסף.</div></div>`;
+  const shareCard = (isAdminEmail(currentEmail) && driveFileId) ? `<div class="card" id="shareCard">${sharingCardInner()}</div>` : '';
+  const switchCard = `<div class="card" id="switchCard">${switchFileCardInner()}</div>`;
+  return conCard + shareCard + switchCard + backupCard;
+}
+/* Daily-log sync (contractors only): contractors of the daily-log app (its own Drive file) are offered as a list; linked ones are matched
+   by their original id (srcId), or the first time by identical name. Nothing is deleted. */
+async function fetchDailyLogData(){
+  const q = encodeURIComponent(`name='יומן-עבודה-נתונים.json' and trashed=false`);
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
+  const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה בחיפוש קובץ היומן');
+  if(!j.files || !j.files.length) throw new Error('קובץ היומן לא נמצא ב-Drive (ייתכן שלאפליקציה אין גישה אליו).');
+  const c = await driveFetch(`https://www.googleapis.com/drive/v3/files/${j.files[0].id}?alt=media`);
+  if(!c.ok) throw new Error('שגיאה בקריאת קובץ היומן');
+  return await c.json();
+}
+async function openLogSync(){
+  try{
+    toast('טוען קבלנים מהיומן...'); const dl = await fetchDailyLogData();
+    const src = (dl.contractors||[]).filter(c=>c && c.id && cleanName(c.name));
+    const linked = new Map(S.contractors.filter(c=>c.srcId).map(c=>[c.srcId,c]));
+    const fresh = src.filter(c=>!linked.has(c.id) && !S.contractors.some(x=>!x.srcId && x.name===cleanName(c.name)));
+    const adopt = src.filter(c=>!linked.has(c.id) && S.contractors.some(x=>!x.srcId && x.name===cleanName(c.name)));
+    const refresh = src.filter(c=>linked.has(c.id) && (linked.get(c.id).name!==cleanName(c.name) || (linked.get(c.id).active!==false)!==(c.active!==false)));
+    modal(`<h2>ייבוא קבלנים מהיומן היומי</h2><div class="sub">${src.length} קבלנים ביומן</div>
+      ${fresh.length?`<div class="bar" style="margin:0 0 6px;"><button class="btn secondary small" id="syAll">בחר הכול</button><button class="btn secondary small" id="syNone">נקה</button></div><div style="max-height:46vh; overflow:auto;">${fresh.map((c,i)=>`<label class="inl" style="display:flex; padding:3px 0;"><input type="checkbox" data-syc="${i}"> ${esc(cleanName(c.name))}${c.active===false?' <span class="sum">(לא פעיל)</span>':''}</label>`).join('')}</div>`:'<div class="empty">כל קבלני היומן כבר הועברו.</div>'}
+      ${(adopt.length||refresh.length)?`<label class="inl" style="margin-top:8px;"><input type="checkbox" id="syUpd" checked> קשר/עדכן ${adopt.length+refresh.length} קבלנים קיימים (שם / סטטוס)</label>`:''}
+      <div class="right"><button class="btn" id="syApply">העבר</button><button class="btn secondary" id="syCancel">ביטול</button></div>`);
+    document.getElementById('syCancel').onclick = closeModal;
+    const qa = sel=>[...document.querySelectorAll(sel)];
+    const all = document.getElementById('syAll'); if(all) all.onclick = ()=> qa('[data-syc]').forEach(x=>x.checked=true);
+    const none = document.getElementById('syNone'); if(none) none.onclick = ()=> qa('[data-syc]').forEach(x=>x.checked=false);
+    document.getElementById('syApply').onclick = ()=>{
+      const pick = qa('[data-syc]:checked').map(x=>fresh[+x.dataset.syc]); const doUpd = !!(document.getElementById('syUpd')&&document.getElementById('syUpd').checked);
+      pick.forEach(c=> S.contractors.push({id:uid('c'), name:cleanName(c.name), active:c.active!==false, srcId:c.id}));
+      if(doUpd){
+        adopt.forEach(c=>{ const loc = S.contractors.find(x=>!x.srcId && x.name===cleanName(c.name)); if(loc){ loc.srcId = c.id; loc.active = c.active!==false; } });
+        refresh.forEach(c=>{ const loc = linked.get(c.id); loc.name = cleanName(c.name); loc.active = c.active!==false; });
+      }
+      if(!pick.length && !doUpd){ toast('לא נבחר דבר'); return; }
+      saveAll(); closeModal(); render(); toast(`הועברו ${pick.length} קבלנים`);
+    };
+  }catch(e){ toast('הייבוא נכשל: '+e.message); }
+}
+async function openDedImport(bill){
+  const acc = accById(bill.accountId), con = conById(acc.contractorId);
+  if(!con){ toast('לא נבחר קבלן בחשבון'); return; }
+  if(!con.srcId){ toast('הקבלן לא סונכרן מהיומן - ייבא אותו ב"הגדרות" כדי למשוך קיזוזים'); return; }
+  try{
+    toast('טוען קיזוזים מהיומן...'); const dl = await fetchDailyLogData();
+    const used = new Set(S.deductions.map(d=>d.srcKey).filter(Boolean)), rows = [];
+    (dl.logs||[]).forEach(l=>{ if(!l || l.deleted) return; (l.deductions||[]).forEach(d=>{ if(!d || d.contractorId!==con.srcId) return; const key = l.id+'|'+d.id; if(used.has(key)) return; rows.push({key, date:l.date||'', reason:d.reason||'', amount:+d.amount||0}); }); });
+    rows.sort((a,b)=>a.date.localeCompare(b.date));
+    modal(`<h2>קיזוזים מהיומן היומי</h2><div class="sub">${esc(con.name)} · קיזוזים שעוד לא נכנסו לאף חשבון</div>
+      ${rows.length?`<div style="max-height:50vh; overflow:auto;">${rows.map((r,i)=>`<label class="inl" style="display:flex; padding:4px 0; border-bottom:1px dashed var(--border);"><input type="checkbox" data-dk="${i}"> <span>${fmt(r.date)} · ${esc(r.reason)||'ללא סיבה'} · <b>${money(r.amount)}</b></span></label>`).join('')}</div>`:'<div class="empty">אין קיזוזים חדשים לקבלן הזה ביומן.</div>'}
+      <div class="right">${rows.length?'<button class="btn" id="dkGo">הוסף את המסומנים</button>':''}<button class="btn secondary" id="dkCancel">${rows.length?'ביטול':'סגור'}</button></div>`);
+    document.getElementById('dkCancel').onclick = closeModal;
+    const go = document.getElementById('dkGo'); if(go) go.onclick = ()=>{
+      const pick = [...document.querySelectorAll('[data-dk]:checked')].map(x=>rows[+x.dataset.dk]); if(!pick.length){ toast('לא נבחר דבר'); return; }
+      pick.forEach(r=> S.deductions.push({id:uid('d'), billId:bill.id, reason:(fmt(r.date)+' · '+(r.reason||'קיזוז')).trim(), amount:r.amount, srcKey:r.key}));
+      saveAll(); closeModal(); refreshDed(); toast(`נוספו ${pick.length} קיזוזים`);
+    };
+  }catch(e){ toast('הייבוא נכשל: '+e.message); }
+}
+function refreshDed(){ const bill = billById(curB); if(!bill) return; const el = document.getElementById('billDed'); if(el){ el.innerHTML = dedHtml(bill, bill.status==='approved'); wireDed(); } refreshLive(); }
+
+/* ---------- dialogs: account, units, print */
+function openAccountModal(){
+  modal(`<h2>חשבון חדש</h2><div class="sub">חוזה עם קבלן בתחום מסוים (למשל חשמל)</div>
+    <div class="f"><label>שם החשבון</label><input type="text" id="naName" placeholder="חשמל"></div>
+    <div class="f"><label>קבלן</label><select id="naCon">${contractorOptions('')}</select></div>
+    <div class="row2"><div class="f"><label>עיכבון / ערבות (%)</label><input type="number" min="0" max="100" step="any" id="naRet" value="0"></div><div class="f"><label>יחידת כמות</label><input type="text" id="naQty" value="דירות"></div></div>
+    <div class="right"><button class="btn" id="naGo">צור חשבון</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('naGo').onclick = ()=>{
+    const name = cleanName(document.getElementById('naName').value); if(!name){ toast('נא להזין שם'); return; }
+    const a = {id:uid('acc'), name, contractorId:document.getElementById('naCon').value, retentionPct:+document.getElementById('naRet').value||0, qtyLabel:cleanName(document.getElementById('naQty').value), note:'', ord:nextOrd(S.accounts)};
+    S.accounts.push(a); curA = a.id; saveAll(); closeModal(); tab = 'accounts'; render();
+  };
+}
+function openUnitsModal(accId){
+  const a = accById(accId);
+  modal(`<h2>הוספת יחידות</h2><div class="sub">${esc(a.name)} · כמה יחידות בבת אחת (למשל 11 מבנים)</div>
+    <div class="row2"><div class="f"><label>קידומת שם</label><input type="text" id="bkPre" value="מבנה "></div><div class="f"><label>כמות יחידות</label><input type="number" min="1" max="60" id="bkCnt" value="1"></div><div class="f"><label>מספר ראשון</label><input type="number" min="0" id="bkFrom" value="${unitsOf(accId).length+1}"></div></div>
+    <div class="f"><label>כתב כמויות</label><select id="bkTpl">${templateOptions('')}</select></div>
+    <div class="row2"><div class="f"><label>כמות (למשל דירות) לכל יחידה</label><input type="number" min="0" step="any" id="bkQty" value="0"></div><div class="f"><label>תעריף ליחידת כמות (₪)</label><input type="number" min="0" step="any" id="bkRate" value="0"></div></div>
+    <div class="right"><button class="btn" id="bkGo">הוסף</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('bkGo').onclick = ()=>{
+    const n = Math.max(1, Math.min(60, +document.getElementById('bkCnt').value||1)), from = +document.getElementById('bkFrom').value||1, pre = document.getElementById('bkPre').value;
+    const tid = document.getElementById('bkTpl').value, qty = +document.getElementById('bkQty').value||0, rate = +document.getElementById('bkRate').value||0;
+    let ord = nextOrd(unitsOf(accId));
+    for(let i=0;i<n;i++) S.units.push({id:uid('u'), accountId:accId, name:cleanName(pre+(from+i)), templateId:tid, qty, rate, ord:ord++});
+    saveAll(); closeModal(); render(); toast(`נוספו ${n} יחידות`);
+  };
+}
+function openPrintDialog(bill){
+  modal(`<h2>הדפסת חשבון חלקי מס' ${bill.num}</h2><div class="sub">עמוד סיכום, ואפשר להוסיף פירוט סעיפים לכל יחידה</div>
+    <label class="inl" style="margin:6px 0;"><input type="checkbox" id="pdDetail"> כולל פירוט סעיפים (עמוד לכל יחידה)</label>
+    <label class="inl" style="margin:6px 0; padding-inline-start:24px;"><input type="checkbox" id="pdChanged" checked> רק יחידות שהיה בהן שינוי בחשבון זה</label>
+    <div class="right"><button class="btn" id="pdGo">הדפס</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
+  document.getElementById('edCancel').onclick = closeModal;
+  document.getElementById('pdGo').onclick = ()=>{ const d = document.getElementById('pdDetail').checked, ch = document.getElementById('pdChanged').checked; closeModal(); printBill(bill, d, ch); };
+}
+function printBill(bill, detail, onlyChanged){
+  const c = billCalc(bill), acc = c.acc, prev = c.prev;
+  const sumTable = `<table><thead><tr><th>יחידה</th><th>מחיר היחידה</th><th>% קודם</th><th>% מצטבר</th><th>ערך קודם</th><th>ערך מצטבר</th><th>ערך בחשבון זה</th></tr></thead><tbody>${c.rows.map(r=>`<tr><td class="l">${esc(r.u.name)}</td><td>${money(r.amount)}</td><td>${pctTxt(r.prevPct)}</td><td>${pctTxt(r.cumPct)}</td><td>${money(r.prev)}</td><td>${money(r.cum)}</td><td><b>${money(r.val)}</b></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td class="l"><b>סה"כ</b></td><td><b>${money(c.contract)}</b></td><td>${pctTxt(c.contract?c.prevTot/c.contract*100:0)}</td><td>${pctTxt(c.contract?c.cumTot/c.contract*100:0)}</td><td><b>${money(c.prevTot)}</b></td><td><b>${money(c.cumTot)}</b></td><td><b>${money(c.work)}</b></td></tr></tfoot></table>`;
+  const dedRows = c.dedList.map(d=>`<tr><td class="l">${esc(d.reason||'קיזוז')}</td><td>-${money(d.amount)}</td></tr>`).join('');
+  const calcTable = `<table style="width:60%;"><tbody><tr><td class="l">ערך עבודה בחשבון זה</td><td>${money(c.work)}</td></tr>
+    <tr><td class="l">עיכבון ${bill.retentionPct||0}%</td><td>-${money(c.ret)}</td></tr>${dedRows}
+    <tr class="tot"><td class="l"><b>לתשלום (לפני מע"מ)</b></td><td><b>${money(c.net)}</b></td></tr></tbody></table>`;
+  let html = `<div class="pg"><h1>חשבון חלקי מס' ${bill.num} - ${esc(acc.name)}</h1>
+    <div class="meta"><span><b>קבלן:</b> ${esc(conName(acc))||'—'}</span><span><b>תאריך:</b> ${fmt(bill.date)}</span>${bill.period?`<span><b>תקופה:</b> ${esc(bill.period)}</span>`:''}<span><b>סכום החוזה:</b> ${money(c.contract)}</span></div>
+    ${sumTable}${calcTable}<div class="sign"><div>חתימת הקבלן</div><div>מנהל עבודה</div><div>מנהל פרויקט</div></div></div>`;
+  if(detail){
+    c.rows.forEach(r=>{
+      const lns = linesOf(r.u.templateId);
+      const lr = lns.map(l=>{ const la = r.amount*(+l.pct||0)/100, p0 = prev?pctAt(prev,r.u.id,l.id):0, p1 = pctAt(bill,r.u.id,l.id); return {l, la, p0, p1, val:r2(la*(p1-p0)/100)}; });
+      if(onlyChanged && !lr.some(x=>x.p1!==x.p0)) return;
+      html += `<div class="pg"><h1>${esc(r.u.name)} - פירוט סעיפים</h1><div class="meta"><span><b>חשבון חלקי מס' ${bill.num}</b> · ${esc(acc.name)}</span><span><b>מחיר היחידה:</b> ${money(r.amount)}</span></div>
+        <table><thead><tr><th>סעיף</th><th>תיאור</th><th>מחיר הסעיף</th><th>% קודם</th><th>% מצטבר</th><th>ערך בחשבון זה</th></tr></thead><tbody>${lr.map(x=>`<tr><td>${esc(x.l.num)}</td><td class="l">${esc(x.l.desc)}</td><td>${money(x.la)}</td><td>${pctTxt(x.p0)}</td><td>${pctTxt(x.p1)}</td><td>${money(x.val)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="2" class="l"><b>סה"כ</b></td><td><b>${money(r.amount)}</b></td><td>${pctTxt(r.prevPct)}</td><td>${pctTxt(r.cumPct)}</td><td><b>${money(r.val)}</b></td></tr></tfoot></table></div>`;
+    });
+  }
+  document.getElementById('printOut').innerHTML = html;
+  document.body.classList.add('print-bill');
+  window.print();
+}
+window.addEventListener('afterprint', ()=> document.body.classList.remove('print-bill'));
+
+/* ============================================================== wiring */
+const on = (sel, fn, root)=> (root||document).querySelectorAll(sel).forEach(fn);
+function wireDed(){
+  const bill = billById(curB); if(!bill) return;
+  on('[data-df]', el=> el.onchange = ()=>{ const d = S.deductions.find(x=>x.id===el.dataset.did); if(!d) return; d[el.dataset.df] = el.dataset.df==='amount' ? Math.max(0, r2(el.value)) : el.value; saveAll(); refreshLive(); });
+  on('[data-ddel]', el=> el.onclick = ()=>{ S.deductions = S.deductions.filter(x=>x.id!==el.dataset.ddel); saveAll(); refreshDed(); });
+  const add = document.getElementById('dedAdd'); if(add) add.onclick = ()=>{ S.deductions.push({id:uid('d'), billId:bill.id, reason:'', amount:0}); saveAll(); refreshDed(); };
+  const imp = document.getElementById('dedImport'); if(imp) imp.onclick = ()=> openDedImport(bill);
+}
+function wire(){
+  on('#accNew', el=> el.onclick = openAccountModal);
+  on('[data-acc]', el=> el.onclick = ()=>{ curA = el.dataset.acc; render(); });
+  on('[data-bacc]', el=> el.onclick = ()=>{ curA = el.dataset.bacc; curB = ''; render(); });
+  /* ---- accounts tab */
+  on('[data-af]', el=> el.onchange = ()=>{ const a = accById(curA); if(!a) return; const f = el.dataset.af; a[f] = f==='retentionPct' ? Math.min(100,Math.max(0,+el.value||0)) : (f==='name'||f==='qtyLabel' ? cleanName(el.value) : el.value); saveAll(); if(f==='name'||f==='contractorId'||f==='qtyLabel') render(); });
+  const ad = document.getElementById('accDel'); if(ad) ad.onclick = ()=>{
+    const a = accById(curA); if(!a) return;
+    if(!confirm(`למחוק את החשבון "${a.name}" כולל כל היחידות והחשבונות החלקיים שלו? הפעולה אינה הפיכה.`)) return;
+    const bids = new Set(billsOf(a.id).map(b=>b.id)), uids = new Set(unitsOf(a.id).map(u=>u.id));
+    S.entries = S.entries.filter(e=>!bids.has(e.billId)); S.deductions = S.deductions.filter(d=>!bids.has(d.billId)); S.bills = S.bills.filter(b=>b.accountId!==a.id); S.units = S.units.filter(u=>!uids.has(u.id)); S.accounts = S.accounts.filter(x=>x.id!==a.id);
+    invalidate(); curA = ''; saveAll(); render();
+  };
+  const ua = document.getElementById('unitAdd'); if(ua) ua.onclick = ()=>{ const t = ([...S.templates].sort(byOrd)[0]||{}).id||''; S.units.push({id:uid('u'), accountId:curA, name:'יחידה '+(unitsOf(curA).length+1), templateId:t, qty:0, rate:0, ord:nextOrd(unitsOf(curA))}); saveAll(); render(); };
+  const ub = document.getElementById('unitBulk'); if(ub) ub.onclick = ()=> openUnitsModal(curA);
+  on('[data-uf]', el=> el.onchange = ()=>{
+    const u = S.units.find(x=>x.id===el.dataset.uid); if(!u) return; const f = el.dataset.uf;
+    u[f] = (f==='qty'||f==='rate') ? Math.max(0, +el.value||0) : (f==='name' ? cleanName(el.value) : el.value);
+    saveAll();
+    if(f==='qty'||f==='rate'){ const c = document.getElementById('amt_'+u.id); if(c) c.innerHTML = '<b>'+money(unitAmount(u))+'</b>'; const t = document.getElementById('unitsTotal'); if(t) t.textContent = money(unitsOf(curA).reduce((s,x)=>s+unitAmount(x),0)); }
+    else if(f==='templateId') render();
+  });
+  on('[data-udel]', el=> el.onclick = ()=>{
+    const u = S.units.find(x=>x.id===el.dataset.udel); if(!u) return;
+    const n = S.entries.filter(e=>e.unitId===u.id).length;
+    if(!confirm(`למחוק את היחידה "${u.name}"?${n?` יימחקו גם ${n} רשומות התקדמות שדווחו עליה בחשבונות חלקיים.`:''}`)) return;
+    S.entries = S.entries.filter(e=>e.unitId!==u.id); S.units = S.units.filter(x=>x.id!==u.id); invalidate(); saveAll(); render();
+  });
+  /* ---- bills tab */
+  const bn = document.getElementById('billNew'); if(bn) bn.onclick = ()=>{
+    const a = accById(curA), list = billsOf(a.id), last = list[list.length-1];
+    if(last && last.status!=='approved' && !confirm(`חשבון חלקי מס' ${last.num} עדיין בטיוטה (לא אושר). לפתוח בכל זאת חשבון חדש?`)) return;
+    const b = {id:uid('b'), accountId:a.id, num:(last?last.num:0)+1, date:todayStr(), period:'', retentionPct:last?(last.retentionPct||0):(a.retentionPct||0), status:'draft'};
+    S.bills.push(b); curB = b.id; invalidate(); saveAll(); render();
+  };
+  on('[data-openbill]', el=> el.onclick = ()=>{ curB = el.dataset.openbill; render(); });
+  const bb = document.getElementById('billBack'); if(bb) bb.onclick = ()=>{ curB = ''; render(); };
+  const bill = curB ? billById(curB) : null;
+  if(bill){
+    on('[data-bf]', el=> el.onchange = ()=>{ const f = el.dataset.bf; bill[f] = f==='retentionPct' ? Math.min(100,Math.max(0,+el.value||0)) : el.value; saveAll(); if(f==='retentionPct') refreshLive(); });
+    on('[data-cu]', el=> el.onchange = ()=>{ setPct(bill, el.dataset.cu, el.dataset.cl, el.value); refreshLive(); });
+    on('[data-full]', el=> el.onclick = ()=>{ const [u,l] = el.dataset.full.split('|'); setPct(bill,u,l,100); refreshLive(); });
+    on('[data-ucol]', el=> el.onclick = ()=>{ const u = S.units.find(x=>x.id===el.dataset.ucol); linesOf(u.templateId).forEach(l=> setPct(bill,u.id,l.id,100)); refreshLive(); });
+    on('[data-lrow]', el=> el.onclick = ()=>{ const l = S.lines.find(x=>x.id===el.dataset.lrow); unitsOf(bill.accountId).filter(u=>u.templateId===l.templateId).forEach(u=> setPct(bill,u.id,l.id,100)); refreshLive(); });
+    const pr = document.getElementById('billPrint'); if(pr) pr.onclick = ()=> openPrintDialog(bill);
+    const ap = document.getElementById('billApprove'); if(ap) ap.onclick = ()=>{ if(!confirm(`לאשר את חשבון חלקי מס' ${bill.num}? אחרי האישור הוא ננעל לעריכה (אפשר לפתוח מחדש).`)) return; bill.status = 'approved'; saveAll(); render(); };
+    const ro = document.getElementById('billReopen'); if(ro) ro.onclick = ()=>{ const later = billsOf(bill.accountId).some(b=>b.num>bill.num); if(later && !confirm('קיימים חשבונות מאוחרים יותר. שינוי בחשבון זה ישפיע על חישוב ההפרש שלהם. לפתוח בכל זאת?')) return; bill.status = 'draft'; saveAll(); render(); };
+    const bd = document.getElementById('billDel'); if(bd) bd.onclick = ()=>{ if(!confirm(`למחוק את חשבון חלקי מס' ${bill.num} כולל כל הדיווחים והקיזוזים שלו?`)) return; S.entries = S.entries.filter(e=>e.billId!==bill.id); S.deductions = S.deductions.filter(d=>d.billId!==bill.id); S.bills = S.bills.filter(b=>b.id!==bill.id); invalidate(); curB = ''; saveAll(); render(); };
+    wireDed(); refreshLive();
+  }
+  /* ---- templates tab */
+  on('[data-tpl]', el=> el.onclick = ()=>{ curT = el.dataset.tpl; render(); });
+  const tn = document.getElementById('tplNew'); if(tn) tn.onclick = ()=>{ const name = prompt('שם כתב הכמויות החדש:'); if(!name || !cleanName(name)) return; const t = {id:uid('tpl'), name:cleanName(name), ord:nextOrd(S.templates)}; S.templates.push(t); curT = t.id; saveAll(); render(); };
+  on('[data-tf]', el=> el.onchange = ()=>{ const t = tplById(curT); if(t){ t.name = cleanName(el.value)||t.name; saveAll(); render(); } });
+  on('[data-lf]', el=> el.onchange = ()=>{
+    const l = S.lines.find(x=>x.id===el.dataset.lid); if(!l) return; const f = el.dataset.lf;
+    l[f] = f==='pct' ? Math.min(100,Math.max(0,r2(el.value))) : (f==='num' ? cleanName(el.value) : el.value.trim());
+    saveAll(); if(f==='pct'){ const s = document.getElementById('tplSum'); const sum = lineSum(curT); if(s){ s.textContent = sum+'%'; s.className = sum===100?'':'neg'; } }
+  });
+  on('[data-ldel]', el=> el.onclick = ()=>{ const l = S.lines.find(x=>x.id===el.dataset.ldel); if(!l) return; const n = S.entries.filter(e=>e.lineId===l.id).length; if(!confirm(`למחוק את סעיף ${l.num}?${n?` יימחקו גם ${n} דיווחי התקדמות עליו.`:''}`)) return; S.entries = S.entries.filter(e=>e.lineId!==l.id); S.lines = S.lines.filter(x=>x.id!==l.id); invalidate(); saveAll(); render(); });
+  const la = document.getElementById('lnAdd'); if(la) la.onclick = ()=>{ const ls = linesOf(curT); const mx = ls.reduce((m,l)=>Math.max(m,parseInt(l.num)||0),0); S.lines.push({id:uid('ln'), templateId:curT, num:String(mx+1), desc:'', pct:0, ord:nextOrd(ls)}); saveAll(); render(); };
+  const ti = document.getElementById('tplImport'); if(ti) ti.onclick = ()=> openBoqImport(curT);
+  const td = document.getElementById('tplDup'); if(td) td.onclick = ()=>{ const t = tplById(curT); const n = {id:uid('tpl'), name:t.name+' (עותק)', ord:nextOrd(S.templates)}; S.templates.push(n); linesOf(t.id).forEach(l=> S.lines.push({...l, id:uid('ln'), templateId:n.id})); curT = n.id; saveAll(); render(); };
+  const tdl = document.getElementById('tplDel'); if(tdl) tdl.onclick = ()=>{ const t = tplById(curT); if(S.units.some(u=>u.templateId===t.id)){ toast('כתב הכמויות בשימוש ביחידות - אי אפשר למחוק'); return; } if(!confirm(`למחוק את כתב הכמויות "${t.name}"?`)) return; S.lines = S.lines.filter(l=>l.templateId!==t.id); S.templates = S.templates.filter(x=>x.id!==t.id); saveAll(); curT=''; render(); };
+  /* ---- settings tab */
+  const sl = document.getElementById('syncLog'); if(sl) sl.onclick = openLogSync;
+  on('[data-cact]', el=> el.onchange = ()=>{ const c = conById(el.dataset.cact); if(c){ c.active = el.checked; saveAll(); } });
+  on('[data-cdel]', el=> el.onclick = ()=>{ const c = conById(el.dataset.cdel); if(c && confirm(`למחוק את הקבלן "${c.name}" מהרשימה?`)){ S.contractors = S.contractors.filter(x=>x.id!==c.id); saveAll(); render(); } });
+  const ac = document.getElementById('addCons'); if(ac) ac.onclick = ()=>{
+    const names = document.getElementById('newCons').value.split(/\r?\n/).map(cleanName).filter(Boolean); let n = 0;
+    names.forEach(nm=>{ if(!S.contractors.some(c=>c.name===nm)){ S.contractors.push({id:uid('c'), name:nm, active:true}); n++; } });
+    if(n){ saveAll(); render(); toast(`נוספו ${n} קבלנים`); } else toast('לא נוסף קבלן חדש');
+  };
+  const be = document.getElementById('bkExport'); if(be) be.onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-חשבון-חלקי-${todayStr()}.json`; a.click(); };
+  const shc = document.getElementById('shareCard'); if(shc) wireSharingCard(shc);
+  const swf = document.getElementById('sw_file'); if(swf) swf.onclick = switchDataFile;
+  const sb = document.getElementById('saveBtn'); if(sb) sb.onclick = flushSave;
+}
+/* Ctrl+S / Cmd+S: saves the work instead of downloading the page (same as the other apps) */
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code==='KeyS' || String(e.key).toLowerCase()==='s')){ e.preventDefault(); flushSave(); }
+});
+
+/* ============================================================== Drive: sign-in, load, save, merge */
+const DRIVE_CLIENT_ID = '313815811753-t2apguvh41f919idhsittrbb96896aov.apps.googleusercontent.com';
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file email profile';
+const DRIVE_FILE_NAME = 'חשבון-חלקי-נתונים.json';
+let accessToken = null, tokenClient = null, driveFileId = null, driveFileModifiedTime = null, tokenRefreshTimer = null, baseSnapshot = null;
+let driveSaveTimer = null, driveSaveInFlight = false, driveSavePending = false, driveDirty = false, driveSaveSeq = 0;
+let tokenRefreshPromise = null, pendingTokenError = null, driveAuthBroken = false;
+const driveVersion = o => (o && (o.headRevisionId || o.modifiedTime)) || null;
+function setDriveStatus(t){ const el = document.getElementById('driveSaveStatus'); if(el) el.textContent = t ? (' · ' + t) : ''; }
+function gateStatus(t){ const el = document.getElementById('gateStatus'); if(el) el.textContent = t; }
+function saveAll(){ driveDirty = true; driveSaveSeq++; setDriveStatus('שומר...'); clearTimeout(driveSaveTimer); driveSaveTimer = setTimeout(driveSaveNow, 800); }
+const snapshotPayload = ()=> JSON.parse(JSON.stringify(buildPayload()));
+
+/* ---- 3-way merge (same engine as the other apps): a collection of {id} rows merges row by row, a record field by field */
+function deepEqual(a,b){
+  if(a===b) return true; if(a==null||b==null) return a===b; if(typeof a!==typeof b) return false; if(typeof a!=='object') return a===b;
+  if(Array.isArray(a)!==Array.isArray(b)) return false;
+  if(Array.isArray(a)){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(!deepEqual(a[i],b[i])) return false; return true; }
+  const ak = Object.keys(a), bk = Object.keys(b); if(ak.length!==bk.length) return false;
+  for(const k of ak){ if(!Object.prototype.hasOwnProperty.call(b,k) || !deepEqual(a[k],b[k])) return false; } return true;
+}
+function mergeField(base, local, remote){
+  const lc = !deepEqual(local,base), rc = !deepEqual(remote,base);
+  if(!rc) return {value:local, conflict:false}; if(!lc) return {value:remote, conflict:false};
+  if(deepEqual(local,remote)) return {value:local, conflict:false};
+  return {value:local, conflict:true};
+}
+function mergeRecord(base, local, remote){
+  const merged = {...local}; let conflicts = 0;
+  new Set([...Object.keys(local||{}), ...Object.keys(remote||{}), ...Object.keys(base||{})]).forEach(k=>{ const r = mergeField(base&&base[k], local&&local[k], remote&&remote[k]); merged[k] = r.value; if(r.conflict) conflicts++; });
+  return {record:merged, conflicts};
+}
+function mergeRows(baseArr, localArr, remoteArr){
+  baseArr = Array.isArray(baseArr)?baseArr:[]; localArr = Array.isArray(localArr)?localArr:[]; remoteArr = Array.isArray(remoteArr)?remoteArr:[];
+  const bm = new Map(baseArr.filter(r=>r&&r.id).map(r=>[r.id,r])), lm = new Map(localArr.filter(r=>r&&r.id).map(r=>[r.id,r])), rm = new Map(remoteArr.filter(r=>r&&r.id).map(r=>[r.id,r]));
+  const ids = []; const seen = new Set(); [...localArr, ...remoteArr].forEach(r=>{ if(r&&r.id&&!seen.has(r.id)){ ids.push(r.id); seen.add(r.id); } });
+  const merged = []; let conflicts = 0;
+  ids.forEach(id=>{ const b = bm.get(id), l = lm.get(id), r = rm.get(id);
+    if(l && !r){ if(b && deepEqual(l,b)) return; merged.push(l); return; }
+    if(!l && r){ if(b && deepEqual(r,b)) return; if(!b){ merged.push(r); return; } return; }
+    if(!l && !r) return;
+    const m = mergeRecord(b,l,r); merged.push(m.record); conflicts += m.conflicts; });
+  return {merged, conflicts};
+}
+
+async function driveSaveNow(){
+  if(driveSaveInFlight){ driveSavePending = true; return; }
+  driveSaveInFlight = true;
+  const seqAtStart = driveSaveSeq;
+  try{
+    const metaRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=modifiedTime,headRevisionId`);
+    const meta = await metaRes.json();
+    if(!metaRes.ok) throw new Error(meta.error ? meta.error.message : 'שגיאה בבדיקת הקובץ');
+    if(driveFileModifiedTime && driveVersion(meta) !== driveFileModifiedTime){
+      const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+      if(!contentRes.ok) throw new Error('שגיאה בקריאת הגרסה העדכנית מ-Drive לצורך מיזוג');
+      const remote = await contentRes.json(), base = baseSnapshot || remote; let conflicts = 0;
+      COLLECTIONS.forEach(n=>{ const r = mergeRows(base[n], S[n], remote[n]); S[n] = r.merged; conflicts += r.conflicts; });
+      invalidate();
+      if(conflicts) toast(`מוזגו שינויים של משתמש אחר - ${conflicts} פריט/ים נערכו בו-זמנית (נשמרה הגרסה שלך)`);
+      render();
+    }
+    const putRes = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media&fields=modifiedTime,headRevisionId`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(buildPayload())});
+    const putJson = await putRes.json();
+    if(!putRes.ok) throw new Error(putJson.error ? putJson.error.message : 'שגיאה בשמירה');
+    driveFileModifiedTime = driveVersion(putJson); baseSnapshot = snapshotPayload();
+    if(driveSaveSeq === seqAtStart) driveDirty = false;
+    driveAuthBroken = false; hideDriveProblem();
+    setDriveStatus('נשמר · ' + new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){
+    setDriveStatus('⚠ שגיאת שמירה: ' + e.message);
+    showDriveProblem(e.auth ? 'auth' : 'error', e.auth ? e.message : ('שגיאת שמירה ל-Drive: ' + e.message));
+  }finally{
+    driveSaveInFlight = false;
+    if(driveSavePending){ driveSavePending = false; driveSaveNow(); }
+  }
+}
+/* explicit "💾 שמור" / Ctrl+S: no debounce, and says clearly whether it reached Drive */
+async function flushSave(){
+  if(!driveFileId){ toast('אין חיבור ל-Drive - נא להתחבר'); return; }
+  if(!driveDirty && !driveSaveInFlight && !driveSavePending){ toast('הכול כבר שמור ב-Drive ✓'); return; }
+  clearTimeout(driveSaveTimer); setDriveStatus('שומר...');
+  const t0 = Date.now(); driveSaveNow();
+  while((driveSaveInFlight || driveSavePending) && Date.now()-t0 < 60000) await new Promise(r=>setTimeout(r,150));
+  toast(driveDirty ? '⚠ השמירה לא הושלמה - ראה את ההודעה' : 'נשמר ב-Drive ✓');
+}
+
+/* ---- token handling (same hardening as the other apps: error_callback, timeouts, one refresh at a time, explicit re-sign-in dialog) */
+function makeTokenClient(){ return google.accounts.oauth2.initTokenClient({client_id:DRIVE_CLIENT_ID, scope:DRIVE_SCOPES, callback:onDriveSignIn, error_callback:(err)=>{ if(pendingTokenError) pendingTokenError(err); }}); }
+function requestFreshToken(timeoutMs, force){
+  if(tokenRefreshPromise){ if(!force) return tokenRefreshPromise; if(pendingTokenError) pendingTokenError({type:'superseded_by_user_click'}); }
+  if(force && typeof google!=='undefined' && google.accounts) tokenClient = makeTokenClient();
+  tokenRefreshPromise = new Promise((resolve,reject)=>{
+    let settled = false, timer = null;
+    const finish = (fn,val)=>{ if(settled) return; settled = true; clearTimeout(timer); tokenClient.callback = onDriveSignIn; pendingTokenError = null; tokenRefreshPromise = null; fn(val); };
+    timer = setTimeout(()=>finish(reject,new Error('token refresh timed out')), timeoutMs||20000);
+    pendingTokenError = err=> finish(reject,new Error('token refresh failed: '+((err&&(err.type||err.message))||'unknown')));
+    tokenClient.callback = resp=>{ if(resp.error){ finish(reject,new Error(resp.error_description||resp.error)); return; } accessToken = resp.access_token; if(resp.expires_in) scheduleTokenRefresh(resp.expires_in); driveAuthBroken = false; finish(resolve,accessToken); };
+    try{ const cfg = {prompt:''}; if(me && me.email) cfg.hint = me.email; tokenClient.requestAccessToken(cfg); }catch(e){ finish(reject,e); }
+  });
+  return tokenRefreshPromise;
+}
+function scheduleTokenRefresh(sec){ clearTimeout(tokenRefreshTimer); tokenRefreshTimer = setTimeout(()=>{ requestFreshToken(20000).catch(()=>{ driveAuthBroken = true; showDriveProblem('auth','החיבור ל-Google Drive עומד לפוג. לחץ כדי לחדש אותו - כך שום שינוי לא יאבד.'); }); }, Math.max((sec-300)*1000, 30000)); }
+async function driveFetch(url, options={}){
+  const opts = Object.assign({}, options, {headers:Object.assign({}, options.headers, {Authorization:'Bearer '+accessToken})});
+  let res = await fetch(url, opts);
+  if(res.status===401){
+    const authError = ()=>{ const e = new Error('החיבור ל-Google Drive פג ולא ניתן לחדש אותו אוטומטית'); e.auth = true; return e; };
+    if(driveAuthBroken) throw authError();
+    try{ await requestFreshToken(20000); }catch(e){ driveAuthBroken = true; throw authError(); }
+    opts.headers.Authorization = 'Bearer '+accessToken; res = await fetch(url, opts);
+  }
+  return res;
+}
+let dpDismissedUntil = 0;
+function showDriveProblem(kind, message){
+  if(kind!=='auth' && Date.now() < dpDismissedUntil) return;
+  let bar = document.getElementById('driveProblemBar');
+  if(!bar){ bar = document.createElement('div'); bar.id = 'driveProblemBar'; bar.className = 'no-print'; document.body.appendChild(bar); }
+  if(bar.style.display==='flex' && bar.dataset.kind===kind) return;
+  bar.dataset.kind = kind;
+  bar.innerHTML = `<div class="dp-box"><div class="dp-icon">⚠</div><h2>${kind==='auth'?'נדרש חיבור מחדש ל-Google Drive':'השמירה ל-Drive נכשלה'}</h2><p>${esc(message)}</p>
+    <p class="dp-warn">השינויים האחרונים עדיין <b>לא נשמרו</b>. אל תסגור ואל תרענן את הדף לפני שהשמירה מצליחה.</p>
+    <div class="dp-actions"><button type="button" class="btn" id="dpFix">${kind==='auth'?'התחבר מחדש ושמור':'נסה לשמור שוב'}</button><button type="button" class="btn secondary" id="dpBackup">הורד גיבוי של מה שבמסך</button>${kind==='auth'?'':'<button type="button" class="btn secondary" id="dpClose">סגור (ינסה שוב ברקע)</button>'}</div></div>`;
+  bar.style.display = 'flex';
+  if(!document.title.startsWith('⚠')) document.title = '⚠ ' + document.title;
+  document.getElementById('dpBackup').onclick = ()=>{ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(buildPayload())],{type:'application/json'})); a.download = `גיבוי-לא-שמור-${todayStr()}.json`; a.click(); };
+  const cb = document.getElementById('dpClose'); if(cb) cb.onclick = ()=>{ dpDismissedUntil = Date.now()+5*60*1000; hideDriveProblem(); };
+  document.getElementById('dpFix').onclick = ()=>{
+    if(kind==='auth'){
+      const fb = document.getElementById('dpFix'); fb.disabled = true; fb.textContent = 'ממתין לחלון ההתחברות של Google...';
+      requestFreshToken(120000, true).then(()=>{ hideDriveProblem(); saveAll(); }).catch(e=>{ fb.disabled = false; fb.textContent = 'נסה שוב להתחבר'; toast('ההתחברות לא הושלמה: '+String(e&&e.message||e)); });
+    } else { hideDriveProblem(); saveAll(); }
+  };
+}
+function hideDriveProblem(){ const bar = document.getElementById('driveProblemBar'); if(bar) bar.style.display = 'none'; if(document.title.startsWith('⚠ ')) document.title = document.title.slice(2); }
+window.addEventListener('beforeunload', e=>{ if(driveDirty){ e.preventDefault(); e.returnValue = ''; return ''; } });
+setInterval(()=>{ if(driveDirty && !driveSaveInFlight && !driveAuthBroken && !tokenRefreshPromise && driveFileId) saveAll(); }, 45000);
+
+window.addEventListener('load', ()=>{
+  if(typeof google==='undefined' || !google.accounts){ gateStatus('שגיאה: ספריית ההתחברות של Google לא נטענה. בדוק חיבור לאינטרנט ורענן את הדף.'); return; }
+  tokenClient = makeTokenClient();
+  document.getElementById('gateSignInBtn').onclick = ()=>{ gateStatus('פותח חלון התחברות של Google...'); tokenClient.requestAccessToken({prompt:''}); };
+});
+async function onDriveSignIn(resp){
+  if(resp.error){ gateStatus('שגיאה בהתחברות: '+resp.error+(resp.error_description?(' - '+resp.error_description):'')); return; }
+  accessToken = resp.access_token; if(resp.expires_in) scheduleTokenRefresh(resp.expires_in);
+  gateStatus('טוען נתונים מ-Drive...');
+  try{
+    const r = await loadOrCreateDriveFile();
+    if(r === 'needFile'){ showFileNeededGate(); return; }
+    await afterDataLoaded();
+  }catch(e){ gateStatus('שגיאה בטעינת הנתונים מ-Drive: '+e.message); }
+}
+async function afterDataLoaded(){
+  try{ const u = await (await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo')).json(); me = {name:u.name||(u.email||'').split('@')[0]||'משתמש', email:(u.email||'').toLowerCase()}; }catch(e){ me = {name:'משתמש', email:''}; }
+  document.getElementById('signInGate').style.display = 'none';
+  document.getElementById('topbar').style.visibility = 'visible';
+  render();
+}
+
+/* ---- Connecting a user to the shared data file - same mechanism as the other apps.
+   With the drive.file scope an app only sees files it created or that the user explicitly OPENED with it (Google Picker);
+   the admin shares the Drive file; the new user picks it once (remembered in this browser); only the admin creates the first file. */
+const ADMIN_EMAILS = ['r0504433364@gmail.com'];
+const PICKER_API_KEY = 'AIzaSyC53bnV6ykRq44h30Y1Tq68CeyiCyYcKzA';              // browser key, restricted to https://espeton.github.io/* and "Google Picker API"
+const PICKER_APP_ID = '313815811753';   // Google Cloud project number
+const FILE_ID_KEY = 'dataFileId:' + DRIVE_FILE_NAME;
+let currentEmail = '';
+const isAdminEmail = e => ADMIN_EMAILS.includes(String(e||'').toLowerCase());
+function storedFileId(){ try{ return localStorage.getItem(FILE_ID_KEY) || ''; }catch(e){ return ''; } }
+function storeFileId(id){ try{ localStorage.setItem(FILE_ID_KEY, id); }catch(e){} }
+function forgetFileId(){ try{ localStorage.removeItem(FILE_ID_KEY); }catch(e){} }
+async function fetchEmail(){
+  try{ const r = await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo'); const u = await r.json(); currentEmail = (u.email||'').toLowerCase(); }catch(e){}
+  return currentEmail;
+}
+async function readDataFile(id, meta){
+  driveFileId = id; driveFileModifiedTime = driveVersion(meta);
+  const contentRes = await driveFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+  if(!contentRes.ok) throw new Error('שגיאה בקריאת תוכן הקובץ מ-Drive');
+  applyData(await contentRes.json());
+  baseSnapshot = snapshotPayload();
+}
+function loadExternalScript(url, test){
+  return new Promise((resolve,reject)=>{
+    if(test && test()) return resolve();
+    const s = document.createElement('script'); s.src = url; s.onload = ()=> resolve(); s.onerror = ()=> reject(new Error('טעינת רכיב Google נכשלה - בדוק חיבור לאינטרנט'));
+    document.head.appendChild(s);
+  });
+}
+function openFilePicker(){
+  return loadExternalScript('https://apis.google.com/js/api.js', ()=> window.gapi && gapi.load).then(()=> new Promise(resolve=>{
+    gapi.load('picker', ()=>{
+      const shared = new google.picker.DocsView(google.picker.ViewId.DOCS).setOwnedByMe(false).setIncludeFolders(false).setLabel('שותף איתי');
+      const mine = new google.picker.DocsView(google.picker.ViewId.DOCS).setIncludeFolders(false).setLabel('כל הקבצים');
+      new google.picker.PickerBuilder().setOAuthToken(accessToken).setDeveloperKey(PICKER_API_KEY).setAppId(PICKER_APP_ID)
+        .addView(shared).addView(mine).setLocale('iw').setTitle('בחר את קובץ הנתונים המשותף')
+        .setCallback(d=>{ if(d.action==='picked') resolve(d.docs[0]); else if(d.action==='cancel') resolve(null); }).build().setVisible(true);
+    });
+  }));
+}
+function sharingCardInner(){
+  return `<h2>שיתוף קובץ הנתונים עם משתמשים</h2>
+    <div class="sum" style="margin-bottom:8px;">הקובץ <b>${esc(DRIVE_FILE_NAME)}</b> נוצר על ידי האפליקציה ב-Google Drive שלך. כדי שמשתמש נוסף יראה את אותם נתונים: שתף איתו את הקובץ כאן (עורך), והוא נכנס לאפליקציה ובוחר את הקובץ פעם אחת (מסך "בחר את קובץ הנתונים המשותף").</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-bottom:8px;">
+      <div><label>כתובת המייל של המשתמש</label><input type="email" id="sh_email" placeholder="name@gmail.com" style="min-width:250px;"></div>
+      <label class="inl"><input type="checkbox" id="sh_notify" checked style="width:auto;"> שלח הודעה במייל</label>
+      <button class="btn" id="sh_add">שתף כעורך</button>
+      <a class="btn secondary" href="https://drive.google.com/file/d/${driveFileId}/view" target="_blank" rel="noopener" style="text-decoration:none;">פתח את הקובץ ב-Drive</a>
+    </div>
+    <div id="sh_list" class="sum">טוען את רשימת הגישה...</div>`;
+}
+async function refreshSharingList(root){
+  const list = root.querySelector('#sh_list'); if(!list) return;
+  try{
+    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?fields=permissions(id,emailAddress,displayName,role,type)`);
+    const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה');
+    const roleHe = {owner:'בעלים', writer:'עורך', commenter:'מגיב', reader:'צופה'};
+    list.innerHTML = `<b>מי יכול לגשת לקובץ:</b>` + (j.permissions||[]).map(p=>`<div style="display:flex; gap:8px; align-items:center; padding:3px 0;"><span>${esc(p.emailAddress||p.displayName||p.type)}</span><span class="sum">${esc(roleHe[p.role]||p.role)}</span>${p.role==='owner'?'':`<button class="btn danger small" data-shrm="${esc(p.id)}">הסר גישה</button>`}</div>`).join('');
+    list.querySelectorAll('[data-shrm]').forEach(b=> b.onclick = async ()=>{
+      if(!confirm('להסיר את הגישה של המשתמש לקובץ?')) return;
+      const dr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions/${b.dataset.shrm}`, {method:'DELETE'});
+      toast(dr.ok || dr.status===204 ? 'הגישה הוסרה' : 'ההסרה נכשלה'); refreshSharingList(root);
+    });
+  }catch(e){ list.textContent = 'לא ניתן לטעון את רשימת הגישה: ' + e.message; }
+}
+function wireSharingCard(root){
+  root.querySelector('#sh_add').onclick = async ()=>{
+    const email = root.querySelector('#sh_email').value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(email)){ toast('נא להזין כתובת מייל תקינה'); return; }
+    const notify = root.querySelector('#sh_notify').checked;
+    try{
+      const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?sendNotificationEmail=${notify}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role:'writer', type:'user', emailAddress:email})});
+      const j = await r.json(); if(!r.ok) throw new Error(j.error ? j.error.message : 'שגיאה');
+      toast('הקובץ שותף עם ' + email); root.querySelector('#sh_email').value = ''; refreshSharingList(root);
+    }catch(e){ toast('השיתוף נכשל: ' + e.message); }
+  };
+  refreshSharingList(root);
+}
+function switchFileCardInner(){
+  return `<h2>חיבור לקובץ נתונים משותף</h2>
+    <div class="sum" style="margin-bottom:8px;">אם אתה רואה מסך ריק למרות שהמנהל שיתף איתך את הקובץ - לחץ למטה ובחר את הקובץ <b>${esc(DRIVE_FILE_NAME)}</b> שהמנהל שיתף. הנתונים שמוצגים עכשיו יוחלפו בנתוני הקובץ שבחרת.</div>
+    <button class="btn secondary" id="sw_file">בחר קובץ נתונים משותף</button>`;
+}
+async function switchDataFile(){
+  if(!PICKER_API_KEY){ toast('בחירת הקובץ עדיין לא הופעלה (חסר מפתח Google Picker)'); return; }
+  try{
+    const doc = await openFilePicker();
+    if(!doc) return;
+    if(doc.name !== DRIVE_FILE_NAME){ toast(`נבחר קובץ בשם "${doc.name}" - יש לבחור "${DRIVE_FILE_NAME}"`); return; }
+    if(doc.id === driveFileId){ toast('כבר מחובר לקובץ הזה'); return; }
+    if(!confirm('לעבור לקובץ הנתונים שנבחר? הנתונים שמוצגים עכשיו יוחלפו בנתוני הקובץ שנבחר.')) return;
+    const mr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${doc.id}?fields=id,trashed,modifiedTime,headRevisionId`);
+    const meta = await mr.json();
+    if(!mr.ok) throw new Error(meta.error ? meta.error.message : 'אין גישה לקובץ');
+    driveDirty = false; clearTimeout(driveSaveTimer);
+    await readDataFile(doc.id, meta);
+    storeFileId(doc.id);
+    toast('מחובר לקובץ הנתונים המשותף'); render();
+  }catch(e){ toast('החיבור לקובץ נכשל: ' + e.message); }
+}
+function showFileNeededGate(){
+  gateStatus('');
+  const card = document.querySelector('#signInGate .card');
+  let box = document.getElementById('gateNeedFile');
+  if(!box){ box = document.createElement('div'); box.id = 'gateNeedFile'; card.appendChild(box); }
+  box.innerHTML = `
+    <div class="note" style="background:#FFFBEB; border-color:#F5D98B; color:#7A5A0A;">
+      <b>לא נמצא קובץ הנתונים המשותף עבור ${esc(currentEmail||'החשבון הזה')}.</b><br>
+      1. המנהל צריך לשתף איתך את הקובץ <b>${esc(DRIVE_FILE_NAME)}</b> ב-Google Drive (שיתוף ← עורך).<br>
+      2. לחץ למטה ובחר את הקובץ - פעם אחת בלבד; הבחירה נשמרת בדפדפן הזה.
+    </div>
+    <div style="margin-top:10px;"><button id="gatePick" class="btn">בחר את קובץ הנתונים המשותף</button></div>`;
+  document.getElementById('gatePick').onclick = pickSharedFile;
+}
+async function pickSharedFile(){
+  try{
+    gateStatus('פותח את בחירת הקבצים של Google...');
+    const doc = await openFilePicker();
+    if(!doc){ gateStatus(''); return; }
+    if(doc.name !== DRIVE_FILE_NAME){ gateStatus(`נבחר קובץ בשם "${doc.name}". יש לבחור את הקובץ "${DRIVE_FILE_NAME}".`); return; }
+    gateStatus('טוען את הנתונים...');
+    const mr = await driveFetch(`https://www.googleapis.com/drive/v3/files/${doc.id}?fields=id,trashed,modifiedTime,headRevisionId`);
+    const meta = await mr.json();
+    if(!mr.ok) throw new Error(meta.error ? meta.error.message : 'אין גישה לקובץ');
+    await readDataFile(doc.id, meta);
+    storeFileId(doc.id);
+    await afterDataLoaded();
+  }catch(e){ gateStatus('שגיאה בחיבור לקובץ: ' + e.message); }
+}
+async function loadOrCreateDriveFile(){
+  await fetchEmail();
+  // 1) the file this browser was connected to before (found earlier, or chosen through the Picker)
+  const sid = storedFileId();
+  if(sid){
+    try{
+      const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${sid}?fields=id,trashed,modifiedTime,headRevisionId`);
+      const m = await r.json();
+      if(r.ok && !m.trashed){ await readDataFile(sid, m); return 'ok'; }
+    }catch(e){ if(e && e.auth) throw e; }
+    forgetFileId();
+  }
+  // 2) by name among the files this app can see - a file shared by somebody else wins over a stray copy of one's own
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const listRes = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,ownedByMe,modifiedTime,headRevisionId)`);
+  const listJson = await listRes.json();
+  if(!listRes.ok) throw new Error(listJson.error ? listJson.error.message : 'שגיאה בחיפוש הקובץ ב-Drive');
+  if(listJson.files && listJson.files.length>0){
+    const f = listJson.files.find(x=>x.ownedByMe===false) || listJson.files[0];
+    await readDataFile(f.id, f); storeFileId(f.id); return 'ok';
+  }
+  // 3) nothing found: only the admin creates the first file (with the electricity account built in); everyone else must connect to the shared one
+  if(!isAdminEmail(currentEmail)) return 'needFile';
+  {
+    applyData({});
+    const boundary = 'bill_boundary_' + Date.now();
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({name:DRIVE_FILE_NAME, mimeType:'application/json'})}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(buildPayload())}\r\n--${boundary}--`;
+    const createRes = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime,headRevisionId', {method:'POST', headers:{'Content-Type':'multipart/related; boundary='+boundary}, body});
+    const createJson = await createRes.json();
+    if(!createRes.ok) throw new Error(createJson.error ? createJson.error.message : 'שגיאה ביצירת הקובץ ב-Drive');
+    driveFileId = createJson.id; driveFileModifiedTime = driveVersion(createJson); storeFileId(driveFileId);
+  }
+  baseSnapshot = snapshotPayload();
+  return 'ok';
+}
+// A file dropped anywhere outside a drop zone must not make the browser navigate to it (that would leave the app)
+['dragover','drop'].forEach(ev=> window.addEventListener(ev, e=>{ if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files')) e.preventDefault(); }));
+window.addEventListener('beforeprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.dataset.pd = b.style.display; b.style.display = 'none'; } });
+window.addEventListener('afterprint', ()=>{ const b = document.getElementById('topbar'); if(b){ b.style.display = b.dataset.pd || ''; } });
+</script>
+</body>
+</html>
