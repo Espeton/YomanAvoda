@@ -175,26 +175,44 @@ const ELEC_BUILDING = [[1,'גמר הכנות ביציקות של קומת קרק
 const ELEC_BASEMENT = [[1,'גמר הכנות ביציקה של חניון',5],[2,'גמר הכנות ביציקה לפני טיח חניון',5],[3,'גמר הכנות לפני טיח בחניון תת קרקעי כולל חיווט',5],[4,'גמר הכנת עמדות טעינה לרכבים',5],[5,'גמר הרכבת אביזרי קצה ולוחות בחניון תת קרקעי',15],[6,'גמר תשתיות ושוחות בשטחי פיתוח לחשמל + תקשורת',19],[7,'גמר השחלת חיווט בשטחי פיתוח והרכבת עמודי+גופי תאורה בפיתוח',20],[8,'גמר השלמות תקשורת ומנ"מ בפיתוח וקבלת אישור בזק הוט וסלקום',4],[9,'גמר השלמות לחשמל בפיתוח+השחלת חוטים של ח. חשמל וקבלת אישור חברת חשמל',5],[11,'התקנת גופי חשמל נסתרים בפיתוח (מחוץ לבניינים)',4],[12,'עם קבלת חשמל מחברת חשמל בכול הפרויקט',5],[13,'הזנת חדר טרפו לבניינים',4],[14,'גמר חשבון סופי',4]];
 /* apartments per building of "פסגת רמות" (from "דירות פרויקט פסגת רמות.xlsx"): 11 buildings, 174 apartments */
 const ELEC_APTS = [12,12,18,18,18,18,18,19,15,13,13];
-/* First-time data: the electricity account of the project, built from the two agreements the user supplied
-   (buildings: 30,000 per apartment x 174 = 5,220,000, split between the 11 buildings by their apartment count; basement: 6,000 x 174 = 1,044,000, same percentages) */
-function seedData(){
-  const d = {}; COLLECTIONS.forEach(n=> d[n] = []);
-  d.templates.push({id:'tpl_elec_bld', name:'חשמל ומתח נמוך - מבנה (דירות)', ord:1}, {id:'tpl_elec_base', name:'חשמל ומתח נמוך - חניון תת קרקעי', ord:2});
-  ELEC_BUILDING.forEach((r,i)=> d.lines.push({id:'ln_b'+r[0], templateId:'tpl_elec_bld', num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
-  ELEC_BASEMENT.forEach((r,i)=> d.lines.push({id:'ln_p'+r[0], templateId:'tpl_elec_base', num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
-  d.accounts.push({id:'acc_elec', name:'חשמל ומתח נמוך', contractorId:'', retentionPct:0, qtyLabel:'דירות', note:'', ord:1});
-  ELEC_APTS.forEach((n,i)=> d.units.push({id:'u_b'+(i+1), accountId:'acc_elec', name:'מבנה '+(i+1), templateId:'tpl_elec_bld', qty:n, rate:30000, ord:i+1}));
-  d.units.push({id:'u_base', accountId:'acc_elec', name:'חניון תת קרקעי', templateId:'tpl_elec_base', qty:174, rate:6000, ord:12});
-  return d;
+/* Plumbing and fire-fighting ("אינסטלציה וכיבוי אש"): buildings 4,420,000 and basement 1,740,000 (from "חשבון כללי אינסטלטור.xlsx"), split by apartments like the electricity */
+const PLUMB_BUILDING = [[1,'גמר צנרת ביציקות',10],[2,'גמר קומפלטים מים',30],[3,'גמר דולחין כולל הכנת מזגנים',15],[4,'קולטנים בקומות',5],[5,'צנרת רייזרים מים וכיבוי אש',10],[6,'גמר התקנת אמבטיות ומיכלי הדחה סמויים',6],[7,'גמר התקנת כלים סניטרים וברזים',12],[8,'תיקון ליקויים בפרוטוקול מסירהסופי לדיירים',6],[9,'מסירת דירות לדיירים',6]];
+const PLUMB_BASEMENT = [[1,'צנרת והכנה עד יציקת רצפה',6],[2,'משאבה לבורות ביוב וניקוז כולל לוחות חשמל והסנקה',5],[3,'משאבות כיבוי אש ומחלק כיבוי ומפרט שומר לחץ',5],[4,'קויי חלוקה לצריכת 3 מבנים',7],[5,'חיטוי מאר מים',1],[6,'התקנת מתזים בחניון',10],[7,'אישור מכון בדיקה למתזים',2],[8,'אישור חדר משאבות',1],[9,'ביצוע שוכות שאיבה כולל התקנת משאבות',4],[10,'גמר שוחות ביוב וניקוז בפיתוח',4],[11,'צנרת ביוב תקרת חניון',6],[12,'צנרת ניקוז תקרת חניון',6],[13,'הכנת צנרת מים להשקיה להידרנטים ולארן גינון',6],[14,'שתילת נקזי מים בחדר מדרגות וברמפה',2],[15,'קווי ניקוז מתחת לרצפת חניון',3],[16,'ביצוע עמדות כיבוי במרתף',5],[17,'ביצוע עמדת כיבוי אש בקרקע',5],[18,'ביצוע הידרנטים',3],[19,'גמר ספרינקלרים ועמדות כיבוי אש קומת מחסנים',4],[20,'גמר ספרינקלרים ועמדות כיבוי אש קומת קרקע',1],[21,'הספקת והתקנת משאבות בחדר משאבות',5],[22,'גמר שוחות ביוב וניקוז במרתף',4],[23,'מפרט מילוי מאגר מים',3],[24,'מבירת שטח ציבורי לועד הבית וחברת ניהול',2]];
+/* Built-in accounts. Each is added once to a data file (the file remembers which ones in "seeds"), so deleting one later does not bring it back.
+   Electricity: buildings 30,000 per apartment x 174 = 5,220,000, split between the 11 buildings by apartment count; basement 6,000 x 174 = 1,044,000, same percentages. */
+const SEEDS = {
+  elec: {id:'acc_elec', name:'חשמל ומתח נמוך', ord:1, tb:'tpl_elec_bld', tbName:'חשמל ומתח נמוך - מבנה (דירות)', tp:'tpl_elec_base', tpName:'חשמל ומתח נמוך - חניון תת קרקעי', lb:ELEC_BUILDING, lp:ELEC_BASEMENT, rb:30000, rp:6000, up:'u_'},
+  plumb: {id:'acc_plumb', name:'אינסטלציה וכיבוי אש', ord:2, tb:'tpl_plumb_bld', tbName:'אינסטלציה וכיבוי אש - מבנה (דירות)', tp:'tpl_plumb_base', tpName:'אינסטלציה וכיבוי אש - חניון תת קרקעי', lb:PLUMB_BUILDING, lp:PLUMB_BASEMENT, rb:4420000/174, rp:1740000/174, up:'up_'}
+};
+function addSeed(d, key){
+  const s = SEEDS[key], k = key==='elec' ? '' : key+'_';
+  d.templates.push({id:s.tb, name:s.tbName, ord:s.ord*2-1}, {id:s.tp, name:s.tpName, ord:s.ord*2});
+  s.lb.forEach((r,i)=> d.lines.push({id:'ln_'+k+'b'+r[0], templateId:s.tb, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
+  s.lp.forEach((r,i)=> d.lines.push({id:'ln_'+k+'p'+r[0], templateId:s.tp, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
+  d.accounts.push({id:s.id, name:s.name, contractorId:'', retentionPct:0, qtyLabel:'דירות', note:'', ord:s.ord});
+  /* a non-round rate (4,420,000/174) would leave the buildings a few agorot off the agreed total, so the last building takes the remainder */
+  const target = r2(s.rb*174); let acc = 0;
+  ELEC_APTS.forEach((n,i)=>{
+    const last = i===ELEC_APTS.length-1, rate = last ? (target-acc)/n : s.rb;
+    if(!last) acc = r2(acc + r2(n*rate));
+    d.units.push({id:s.up+'b'+(i+1), accountId:s.id, name:'מבנה '+(i+1), templateId:s.tb, qty:n, rate, ord:i+1});
+  });
+  d.units.push({id:s.up+'base', accountId:s.id, name:'חניון תת קרקעי', templateId:s.tp, qty:174, rate:s.rp, ord:12});
+  d.seeds = (d.seeds||[]).concat(key);
 }
-function buildPayload(){ const p = {version:1, exportedAt:new Date().toISOString()}; COLLECTIONS.forEach(n=> p[n] = S[n]); return p; }
+let seeded = [];
+function buildPayload(){ const p = {version:1, exportedAt:new Date().toISOString(), seeds:seeded}; COLLECTIONS.forEach(n=> p[n] = S[n]); return p; }
 function applyData(d){
   d = d || {};
   const fresh = !COLLECTIONS.some(n=> Array.isArray(d[n]) && d[n].length);
-  const base = fresh ? seedData() : d;
-  COLLECTIONS.forEach(n=> S[n] = Array.isArray(base[n]) ? base[n] : []);
+  const base = {}; COLLECTIONS.forEach(n=> base[n] = fresh ? [] : (Array.isArray(d[n]) ? d[n] : []));
+  /* a file from before "seeds" existed already contains the electricity account */
+  base.seeds = fresh ? [] : (Array.isArray(d.seeds) ? d.seeds.slice() : ['elec']);
+  let added = false;
+  Object.keys(SEEDS).forEach(key=>{ if(!base.seeds.includes(key)){ addSeed(base, key); added = true; } });
+  COLLECTIONS.forEach(n=> S[n] = base[n]); seeded = base.seeds;
   invalidate();
-  if(fresh) setTimeout(saveAll, 0);
+  if(fresh || added) setTimeout(saveAll, 0);
 }
 
 /* ---- lookups and calculations */
