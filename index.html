@@ -396,6 +396,10 @@
   .conflict-choice{display:flex; gap:8px; flex-wrap:wrap;}
   .conflict-choice .btn{background:#fff;}
   .empty{color:var(--muted); font-size:13px; padding:14px; text-align:center;}
+  /* "+" add button beside a daily-log section title */
+  h3.sec-h{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .sec-add{display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; border-radius:50%; border:1px solid var(--navy); background:#fff; color:var(--navy); font-size:19px; line-height:1; font-weight:bold; cursor:pointer; font-family:inherit;}
+  .sec-add:hover{background:var(--navy); color:#fff;}
   .searchbar{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
   .searchbar > div{flex:1; min-width:150px;}
   .log-result{border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; background:#FAFBFC;}
@@ -1319,6 +1323,10 @@ function buildPrintHeader(){
 function buildLogoImg(){
   return company.logoDataUrl ? `<img src="${company.logoDataUrl}" class="print-logo">` : '';
 }
+/* Section heading of the daily-log form with a "+" add button next to the title (e.g. "יומיות +"). The button keeps the old add-button id. */
+function secHeading(title, btnId, tip, style){
+  return `<h3 class="sec-h" style="${style||'margin-top:22px;'}">${title} <button type="button" class="sec-add no-print" id="${btnId}" title="${esc(tip)}" aria-label="${esc(tip)}">+</button></h3>`;
+}
 function buildCompanyInfoLine(){
   if(!(company.name || company.license)) return '';
   return `<div class="print-co-info">${esc(company.name||'')}${company.license?(' · מס\' רישיון / ח.פ: '+esc(company.license)):''}</div>`;
@@ -1327,7 +1335,7 @@ function buildCompanyInfoLine(){
 /* ===================== Static log printout builders (for batch-printing marked logs) ===================== */
 function buildAttendanceTableHtml(log){
   const rows = (log.attendance||[]).filter(a=>a.contractorId || a.workers);
-  if(rows.length===0) return '<div class="empty">לא נרשמה נוכחות קבלנים.</div>';
+  if(rows.length===0) return '';
   // Columns: קבלן משנה / צוות / מספר פועלים (centered) / הערות (only when at least one row has a note)
   const hasNotes = rows.some(a=>a.note);
   const trs = rows.map(a=>{
@@ -1346,7 +1354,7 @@ function equipmentOwnerLabel(e){
 }
 function buildEquipmentTableHtml(log){
   const rows = (log.equipment||[]).filter(e=>e.type || e.count);
-  if(rows.length===0) return '<div class="empty">לא נרשמה נוכחות כלי צמ"ה.</div>';
+  if(rows.length===0) return '';
   // The contractor column is printed only when at least one row has a contractor (older logs print as before).
   if(rows.some(e=>e.contractorId)){
     const trs = rows.map(e=>`<tr><td>${esc(e.type||'')}</td><td>${esc(equipmentOwnerLabel(e))}</td><td>${esc(e.count||'')}</td></tr>`).join('');
@@ -1364,7 +1372,7 @@ function buildVisitorsTableHtml(log){
 function buildExecutionTableHtml(log){
   const projLocations = sortLocationsAlpha(locations.filter(l=>l.projectId===log.projectId));
   const groups = groupExecutionByLocation(log.execution||[], projLocations);
-  if(groups.length===0) return '<div class="empty">לא נרשמו רישומי ביצוע.</div>';
+  if(groups.length===0) return '';
   let rowsHtml = '';
   groups.forEach(group=>{
     const rowspan = group.rows.length;
@@ -1434,10 +1442,10 @@ function buildLogPrintoutHtml(log){
         <div class="field"><label>מזג אוויר</label><div>${esc(log.weather||'—')}</div></div>
       </div>
       ${log.siteManagerAtDate?`<div class="note">מנהל עבודה אחראי ליום זה: <b>${esc(log.siteManagerAtDate)}</b></div>`:''}
-      <h3>נוכחות קבלני משנה</h3>${buildAttendanceTableHtml(log)}
-      <h3>נוכחות כלי צמ"ה</h3>${buildEquipmentTableHtml(log)}
-      <h3>עובדי חברה</h3><div style="white-space:pre-wrap;">${esc(log.companyEmployees||'—')}</div>
-      <h3>תיעוד ביצוע</h3>${buildExecutionTableHtml(log)}
+      ${(()=>{ const t = buildAttendanceTableHtml(log); return t ? `<h3>נוכחות קבלני משנה</h3>${t}` : ''; })()}
+      ${(()=>{ const t = buildEquipmentTableHtml(log); return t ? `<h3>נוכחות כלי צמ"ה</h3>${t}` : ''; })()}
+      ${(log.companyEmployees&&log.companyEmployees.trim())?`<h3>עובדי חברה</h3><div style="white-space:pre-wrap;">${esc(log.companyEmployees)}</div>`:''}
+      ${(()=>{ const t = buildExecutionTableHtml(log); return t ? `<h3>תיעוד ביצוע</h3>${t}` : ''; })()}
       ${(log.dailyWork&&log.dailyWork.length)?`<h3>יומיות</h3>${buildDailyWorkTableHtml(log)}`:''}
       ${photosHtml?`<h3>תיעוד צילומי</h3>${photosHtml}`:''}
       ${(log.visitors&&log.visitors.length)?`<h3>יומן ביקורים באתר</h3>${buildVisitorsTableHtml(log)}`:''}
@@ -3106,74 +3114,61 @@ function renderDailyLog(main, loadId){
     </div>` : ''; })()}
     ${projects.length===0?'<div class="note">אין עדיין פרויקטים במערכת. עברו לטאב "פרויקטים" והוסיפו פרויקט לפני מילוי יומן.</div>':''}
 
-    <h3 style="margin-top:18px;">נוכחות קבלני משנה</h3>
-    <div class="hint">לקבלן עם קבוצות עבודה ופועלים רשומים (מוגדר בטאב "קבלני משנה") ניתן לסמן נוכחות פרטנית של כל פועל בשם, במקום להקליד רק מספר.</div>
-    <div id="attendanceRows"></div>
-    <button class="btn secondary small" id="addAttendance">+ הוסף קבלן לנוכחות היום</button>
+    <div id="attendanceSection" class="${draft.attendance.length===0?'no-print':''}">
+      ${secHeading('נוכחות קבלני משנה','addAttendance','הוסף קבלן לנוכחות היום','margin-top:18px;')}
+      <div id="attendanceRows"></div>
+    </div>
 
-    <h3 style="margin-top:22px;">נוכחות כלי צמ"ה</h3>
-    <div id="equipmentRows"></div>
-    <button class="btn secondary small" id="addEquipment">+ הוסף כלי צמ"ה</button>
+    <div id="equipmentSection" class="${draft.equipment.length===0?'no-print':''}">
+      ${secHeading('נוכחות כלי צמ"ה','addEquipment','הוסף כלי צמ"ה')}
+      <div id="equipmentRows"></div>
+    </div>
 
-    <h3 style="margin-top:22px;">עובדי חברה</h3>
-    <textarea id="companyEmployeesField" placeholder="שמות ותפקידים של עובדי החברה שנכחו באתר היום">${esc(draft.companyEmployees)}</textarea>
-    <div class="print-mirror" id="companyEmployeesMirror">${esc(draft.companyEmployees)}</div>
-
-    <h3 style="margin-top:22px;">תיעוד ביצוע</h3>
-    <div class="hint no-print">✍️ בדיקת איות: מילה שגויה מסומנת בקו אדום מתחתיה - לחיצה ימנית עליה מציגה הצעות תיקון. אם לא מופיעים קווים אדומים: ב-Chrome ← הגדרות ← שפות ← "בדיקת איות" ← להפעיל "עברית" (הגדרה חד-פעמית בדפדפן, לא באפליקציה).</div>
-    <div id="executionRows"></div>
-    <button class="btn secondary small" id="addExecution">+ הוסף מיקום לתיעוד ביצוע</button>
+    <div id="executionSection" class="${draft.execution.length===0?'no-print':''}">
+      ${secHeading('תיעוד ביצוע','addExecution','הוסף מיקום לתיעוד ביצוע')}
+      <div id="executionRows"></div>
+    </div>
 
     <div id="dailyWorkSection" class="${draft.dailyWork.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">יומיות</h3>
-      <div class="hint">עבודות שאינן קשורות לחוזה הישיר ומשולמות לקבלן ביומית, לפי ימי עבודה ושעות.</div>
+      ${secHeading('יומיות','addDailyWork','הוסף רישום יומית')}
       <div id="dailyWorkRows"></div>
-      <button class="btn secondary small" id="addDailyWork">+ הוסף רישום יומית</button>
     </div>
 
     <div id="photosSection" class="${draft.photos.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">תיעוד צילומי (עד ${LOG_PHOTO_MAX} תמונות ליום)</h3>
-      <label for="photoInput" class="btn secondary small no-print" style="display:inline-block; cursor:pointer;">+ הוספת תמונות</label>
+      <h3 class="sec-h" style="margin-top:22px;">תיעוד צילומי (עד ${LOG_PHOTO_MAX} תמונות ליום) <label for="photoInput" class="sec-add no-print" title="הוסף תמונות">+</label>
+        <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span></h3>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
-      <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span>
-      <div class="hint">התמונות נדחסות אוטומטית ונשמרות בתוך הקובץ המקומי בלבד.</div>
       <div class="photos-grid log-photos" id="photosGrid"></div>
     </div>
 
     <div id="visitorsSection" class="${draft.visitors.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">יומן ביקורים באתר</h3>
+      ${secHeading('יומן ביקורים באתר','addVisitor','הוסף רישום ביקור')}
       <div id="visitorRows"></div>
-      <button class="btn secondary small" id="addVisitor">+ הוסף רישום ביקור</button>
     </div>
 
     <div id="exceptionsSection" class="${draft.exceptions.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">חריגים</h3>
+      ${secHeading('חריגים','addException','הוסף חריג')}
       <div id="exceptionsRows"></div>
-      <button class="btn secondary small" id="addException">+ הוסף חריג</button>
     </div>
 
     <div id="planningSection" class="${draft.planning.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">תכנון</h3>
+      ${secHeading('תכנון','addPlanning','הוסף תכנון')}
       <div id="planningRows"></div>
-      <button class="btn secondary small" id="addPlanning">+ הוסף תכנון</button>
     </div>
 
     <div id="ordersPlacedSection" class="${draft.ordersPlaced.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">הזמנות שבוצעו</h3>
+      ${secHeading('הזמנות שבוצעו','addOrderPlaced','הוסף הזמנה שבוצעה')}
       <div id="ordersPlacedRows"></div>
-      <button class="btn secondary small" id="addOrderPlaced">+ הוסף הזמנה שבוצעה</button>
     </div>
 
     <div id="ordersSection" class="${draft.orders.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">הזמנות שהתקבלו</h3>
+      ${secHeading('הזמנות שהתקבלו','addOrder','הוסף הזמנה שהתקבלה')}
       <div id="ordersRows"></div>
-      <button class="btn secondary small" id="addOrder">+ הוסף הזמנה שהתקבלה</button>
     </div>
 
     <div id="deductionsSection" class="${draft.deductions.length===0?'no-print':''}">
-      <h3 style="margin-top:22px;">קיזוזים מקבלן</h3>
+      ${secHeading('קיזוזים מקבלן','addDeduction','הוסף קיזוז')}
       <div id="deductionsRows"></div>
-      <button class="btn secondary small" id="addDeduction">+ הוסף קיזוז</button>
     </div>
 
     <div id="notesSection" class="${(!draft.notes.trim() && draft.notesPhotos.length===0)?'no-print':''}">
@@ -3201,8 +3196,6 @@ function renderDailyLog(main, loadId){
       <button class="btn secondary small" id="cloneLogCancel">ביטול</button>
     </div>
     <div class="hint" id="autosaveStatus">${savedAlready?'נשמר':'טיוטה חדשה - טרם נשמרה'}</div>
-    <div class="hint">החותמת מוטבעת לנוחות אישית בלבד ואינה נעילה רשמית של הרשומה. ניתן להמשיך לערוך ולשמור מחדש.</div>
-    <div class="hint">"שכפל מיומן קודם" מעתיק את נוכחות הקבלנים, כלי הצמ"ה, והמיקומים/קבלנים של תיעוד הביצוע מיומן ישן לפרויקט זה - כדי לחסוך הזנה חוזרת כשאותם קבלנים עובדים באותם מקומות. שדות הממצאים עצמם תמיד יישארו ריקים למילוי מחדש.</div>
   `;
   main.appendChild(card);
   wireConflictPanel(card);
@@ -3257,16 +3250,10 @@ function renderDailyLog(main, loadId){
   renderOrdersRows();
   renderDeductionsRows();
 
-  ['companyEmployeesField','notesField'].forEach(id=>{
+  ['notesField'].forEach(id=>{
     autoGrowTextarea(document.getElementById(id));
   });
 
-  document.getElementById('companyEmployeesField').oninput = e=>{
-    draft.companyEmployees = e.target.value;
-    document.getElementById('companyEmployeesMirror').textContent = e.target.value;
-    autoGrowTextarea(e.target);
-    scheduleAutosave();
-  };
   document.getElementById('addException').onclick = ()=>{ draft.exceptions.push({id:uid('exc'), contractorId:'', description:''}); renderExceptionsRows(); scheduleAutosave(); };
   document.getElementById('addDeduction').onclick = ()=>{ draft.deductions.push({id:uid('ded'), contractorId:'', crewId:'', reason:'', amount:''}); renderDeductionsRows(); scheduleAutosave(); };
   document.getElementById('addPlanning').onclick = ()=>{ draft.planning.push({id:uid('plan'), contractorId:'', description:'', remind:true}); renderPlanningRows(); scheduleAutosave(); };
@@ -3402,7 +3389,9 @@ function contractorPickOptionsHtml(selectedId){
 function renderAttendanceRows(){
   const wrap = document.getElementById('attendanceRows');
   if(!wrap) return;
-  if(draft.attendance.length===0){ wrap.innerHTML = '<div class="empty">לא נוספו קבלנים לנוכחות היום.</div>'; return; }
+  const attSection = document.getElementById('attendanceSection');
+  if(attSection) attSection.classList.toggle('no-print', draft.attendance.length===0);
+  if(draft.attendance.length===0){ wrap.innerHTML = ''; return; }
   // Only active contractors are offered for picking - an inactive one (section 4.1) is meant to
   // disappear from this selection, not from anything else. A row that already points at a
   // contractor who has SINCE been marked inactive still shows that contractor (labelled), so
@@ -3473,7 +3462,9 @@ function renderAttendanceRows(){
 function renderEquipmentRows(){
   const wrap = document.getElementById('equipmentRows');
   if(!wrap) return;
-  if(draft.equipment.length===0){ wrap.innerHTML = '<div class="empty">לא נוספו כלי צמ"ה לנוכחות היום.</div>'; }
+  const eqSection = document.getElementById('equipmentSection');
+  if(eqSection) eqSection.classList.toggle('no-print', draft.equipment.length===0);
+  if(draft.equipment.length===0){ wrap.innerHTML = ''; }
   else{
     wrap.innerHTML = `
       <table class="log-table has-actions">
@@ -3546,6 +3537,8 @@ function renderExecutionRows(){
   const wrap = document.getElementById('executionRows');
   if(!wrap) return;
   wrap.innerHTML='';
+  const exSection = document.getElementById('executionSection');
+  if(exSection) exSection.classList.toggle('no-print', draft.execution.length===0);
   if(!draft.projectId){
     wrap.innerHTML = '<div class="empty">יש לבחור פרויקט למעלה כדי להוסיף רישומי ביצוע המשויכים למיקום.</div>';
     return;
@@ -3554,7 +3547,7 @@ function renderExecutionRows(){
   const attendingIds = new Set(draft.attendance.map(a=>a.contractorId).filter(Boolean));
   const attendingContractors = sortContractorsAlpha(contractors.filter(c=>attendingIds.has(c.id)));
 
-  if(draft.execution.length===0){ wrap.innerHTML = '<div class="empty">לא נוספו רישומי ביצוע.</div>'; }
+  if(draft.execution.length===0){ wrap.innerHTML = ''; }
 
   const orderedGroups = groupExecutionByLocation(draft.execution, projLocations);
   const contractorOptionsHtml = (selectedId)=> `
@@ -3684,7 +3677,7 @@ function renderDailyWorkRows(){
   if(!wrap) return;
   const section = document.getElementById('dailyWorkSection');
   if(section) section.classList.toggle('no-print', draft.dailyWork.length===0);
-  if(draft.dailyWork.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו עבודות יומיות.</div>'; return; }
+  if(draft.dailyWork.length===0){ wrap.innerHTML = ''; return; }
 
   const attendingIds = new Set(draft.attendance.map(a=>a.contractorId).filter(Boolean));
   const attendingContractors = sortContractorsAlpha(contractors.filter(c=>attendingIds.has(c.id)));
@@ -3783,7 +3776,7 @@ function renderDeductionsRows(){
   if(!wrap) return;
   const section = document.getElementById('deductionsSection');
   if(section) section.classList.toggle('no-print', draft.deductions.length===0);
-  if(draft.deductions.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו קיזוזים.</div>'; return; }
+  if(draft.deductions.length===0){ wrap.innerHTML = ''; return; }
   const allContractors = sortContractorsAlpha(contractors);
   const crewCell = (row,i)=>{
     if(!row.contractorId) return '';
@@ -3823,7 +3816,7 @@ function renderExceptionsRows(){
   if(!wrap) return;
   const section = document.getElementById('exceptionsSection');
   if(section) section.classList.toggle('no-print', draft.exceptions.length===0);
-  if(draft.exceptions.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו חריגים.</div>'; return; }
+  if(draft.exceptions.length===0){ wrap.innerHTML = ''; return; }
 
   // A contractor responsible for an exception doesn't need to be present today
   // (e.g. yesterday's work causing today's problem) - so use the full registry, not just attendance.
@@ -3897,7 +3890,7 @@ function renderPlanningRows(){
   if(!wrap) return;
   const section = document.getElementById('planningSection');
   if(section) section.classList.toggle('no-print', draft.planning.length===0);
-  if(draft.planning.length===0){ wrap.innerHTML = '<div class="empty">לא נרשם תכנון.</div>'; return; }
+  if(draft.planning.length===0){ wrap.innerHTML = ''; return; }
 
   // Unlike execution/exceptions (which describe today, so are limited to today's attendance),
   // planning describes future work - so any contractor in the registry can be selected here.
@@ -3972,7 +3965,7 @@ function renderOrdersPlacedRows(){
   if(!wrap) return;
   const section = document.getElementById('ordersPlacedSection');
   if(section) section.classList.toggle('no-print', draft.ordersPlaced.length===0);
-  if(draft.ordersPlaced.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו הזמנות שבוצעו.</div>'; return; }
+  if(draft.ordersPlaced.length===0){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = `
     <table class="log-table has-actions">
       <colgroup><col style="width:30%"><col style="width:*"><col style="width:50px"></colgroup>
@@ -4012,7 +4005,7 @@ function renderOrdersRows(){
   if(!wrap) return;
   const section = document.getElementById('ordersSection');
   if(section) section.classList.toggle('no-print', draft.orders.length===0);
-  if(draft.orders.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו הזמנות שהתקבלו.</div>'; return; }
+  if(draft.orders.length===0){ wrap.innerHTML = ''; return; }
   wrap.innerHTML = `
     <table class="log-table has-actions">
       <colgroup><col style="width:30%"><col style="width:*"><col style="width:50px"></colgroup>
@@ -4053,7 +4046,7 @@ function renderVisitorRows(){
   const section = document.getElementById('visitorsSection');
   if(section) section.classList.toggle('no-print', draft.visitors.length===0);
   wrap.innerHTML='';
-  if(draft.visitors.length===0){ wrap.innerHTML = '<div class="empty">לא נרשמו ביקורים היום.</div>'; }
+  if(draft.visitors.length===0){ wrap.innerHTML = ''; }
   draft.visitors.forEach((row,i)=>{
     const div = document.createElement('div');
     div.className='subrow';
