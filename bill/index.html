@@ -190,14 +190,9 @@ function addSeed(d, key){
   s.lb.forEach((r,i)=> d.lines.push({id:'ln_'+k+'b'+r[0], templateId:s.tb, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
   s.lp.forEach((r,i)=> d.lines.push({id:'ln_'+k+'p'+r[0], templateId:s.tp, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
   d.accounts.push({id:s.id, name:s.name, contractorId:'', retentionPct:0, qtyLabel:'דירות', note:'', ord:s.ord});
-  /* a non-round rate (4,420,000/174) would leave the buildings a few agorot off the agreed total, so the last building takes the remainder */
-  const target = r2(s.rb*174); let acc = 0;
-  ELEC_APTS.forEach((n,i)=>{
-    const last = i===ELEC_APTS.length-1, rate = last ? (target-acc)/n : s.rb;
-    if(!last) acc = r2(acc + r2(n*rate));
-    d.units.push({id:s.up+'b'+(i+1), accountId:s.id, name:'מבנה '+(i+1), templateId:s.tb, qty:n, rate, ord:i+1});
-  });
-  d.units.push({id:s.up+'base', accountId:s.id, name:'חניון תת קרקעי', templateId:s.tp, qty:174, rate:s.rp, ord:12});
+  /* the rate per quantity unit has two decimals only (4,420,000 / 174 = 25,402.30), so the buildings add up to 20 agorot above 4,420,000 */
+  ELEC_APTS.forEach((n,i)=> d.units.push({id:s.up+'b'+(i+1), accountId:s.id, name:'מבנה '+(i+1), templateId:s.tb, qty:n, rate:r2(s.rb), ord:i+1}));
+  d.units.push({id:s.up+'base', accountId:s.id, name:'חניון תת קרקעי', templateId:s.tp, qty:174, rate:r2(s.rp), ord:12});
   d.seeds = (d.seeds||[]).concat(key);
 }
 let seeded = [];
@@ -211,8 +206,11 @@ function applyData(d){
   let added = false;
   Object.keys(SEEDS).forEach(key=>{ if(!base.seeds.includes(key)){ addSeed(base, key); added = true; } });
   COLLECTIONS.forEach(n=> S[n] = base[n]); seeded = base.seeds;
+  /* rate per quantity unit: two decimals only (also fixes rates saved earlier with a long fraction) */
+  let rounded = false;
+  S.units.forEach(u=>{ const r = r2(u.rate); if(r !== u.rate){ u.rate = r; rounded = true; } });
   invalidate();
-  if(fresh || added) setTimeout(saveAll, 0);
+  if(fresh || added || rounded) setTimeout(saveAll, 0);
 }
 
 /* ---- lookups and calculations */
@@ -292,7 +290,7 @@ function accountsView(){
     return `<tr><td><input type="text" data-uf="name" data-uid="${u.id}" value="${esc(u.name)}" style="width:150px"></td>
       <td><select data-uf="templateId" data-uid="${u.id}">${templateOptions(u.templateId)}</select>${t&&!ok?`<div class="sum neg">סכום הסעיפים ${lineSum(t.id)}%</div>`:''}</td>
       <td><input type="number" min="0" step="any" data-uf="qty" data-uid="${u.id}" value="${u.qty}" style="width:90px;text-align:center"></td>
-      <td><input type="number" min="0" step="any" data-uf="rate" data-uid="${u.id}" value="${u.rate}" style="width:110px;text-align:center"></td>
+      <td><input type="number" min="0" step="0.01" data-uf="rate" data-uid="${u.id}" value="${(+u.rate||0).toFixed(2)}" style="width:110px;text-align:center"></td>
       <td class="num" id="amt_${u.id}"><b>${money(unitAmount(u))}</b></td>
       <td><button class="btn danger small" data-udel="${u.id}">מחק</button></td></tr>`; }).join('');
   return accChips('data-acc', true) + kpis + `
@@ -711,12 +709,12 @@ function openUnitsModal(accId){
   modal(`<h2>הוספת יחידות</h2><div class="sub">${esc(a.name)} · כמה יחידות בבת אחת (למשל 11 מבנים)</div>
     <div class="row2"><div class="f"><label>קידומת שם</label><input type="text" id="bkPre" value="מבנה "></div><div class="f"><label>כמות יחידות</label><input type="number" min="1" max="60" id="bkCnt" value="1"></div><div class="f"><label>מספר ראשון</label><input type="number" min="0" id="bkFrom" value="${unitsOf(accId).length+1}"></div></div>
     <div class="f"><label>כתב כמויות</label><select id="bkTpl">${templateOptions('')}</select></div>
-    <div class="row2"><div class="f"><label>כמות (למשל דירות) לכל יחידה</label><input type="number" min="0" step="any" id="bkQty" value="0"></div><div class="f"><label>תעריף ליחידת כמות (₪)</label><input type="number" min="0" step="any" id="bkRate" value="0"></div></div>
+    <div class="row2"><div class="f"><label>כמות (למשל דירות) לכל יחידה</label><input type="number" min="0" step="any" id="bkQty" value="0"></div><div class="f"><label>תעריף ליחידת כמות (₪)</label><input type="number" min="0" step="0.01" id="bkRate" value="0"></div></div>
     <div class="right"><button class="btn" id="bkGo">הוסף</button><button class="btn secondary" id="edCancel">ביטול</button></div>`);
   document.getElementById('edCancel').onclick = closeModal;
   document.getElementById('bkGo').onclick = ()=>{
     const n = Math.max(1, Math.min(60, +document.getElementById('bkCnt').value||1)), from = +document.getElementById('bkFrom').value||1, pre = document.getElementById('bkPre').value;
-    const tid = document.getElementById('bkTpl').value, qty = +document.getElementById('bkQty').value||0, rate = +document.getElementById('bkRate').value||0;
+    const tid = document.getElementById('bkTpl').value, qty = +document.getElementById('bkQty').value||0, rate = Math.max(0, r2(document.getElementById('bkRate').value));
     let ord = nextOrd(unitsOf(accId));
     for(let i=0;i<n;i++) S.units.push({id:uid('u'), accountId:accId, name:cleanName(pre+(from+i)), templateId:tid, qty, rate, ord:ord++});
     saveAll(); closeModal(); render(); toast(`נוספו ${n} יחידות`);
@@ -784,7 +782,8 @@ function wire(){
   const ub = document.getElementById('unitBulk'); if(ub) ub.onclick = ()=> openUnitsModal(curA);
   on('[data-uf]', el=> el.onchange = ()=>{
     const u = S.units.find(x=>x.id===el.dataset.uid); if(!u) return; const f = el.dataset.uf;
-    u[f] = (f==='qty'||f==='rate') ? Math.max(0, +el.value||0) : (f==='name' ? cleanName(el.value) : el.value);
+    u[f] = f==='rate' ? Math.max(0, r2(el.value)) : (f==='qty' ? Math.max(0, +el.value||0) : (f==='name' ? cleanName(el.value) : el.value));
+    if(f==='rate') el.value = u.rate.toFixed(2);
     saveAll();
     if(f==='qty'||f==='rate'){ const c = document.getElementById('amt_'+u.id); if(c) c.innerHTML = '<b>'+money(unitAmount(u))+'</b>'; const t = document.getElementById('unitsTotal'); if(t) t.textContent = money(unitsOf(curA).reduce((s,x)=>s+unitAmount(x),0)); }
     else if(f==='templateId') render();
