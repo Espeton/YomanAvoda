@@ -64,11 +64,11 @@
   .kpi.net{background:#F0FDF4; border-color:#86EFAC;} .kpi.net .v{color:#166534;}
   /* progress grid */
   .bgrid{min-width:760px;}
-  .bgrid td.pc{padding:3px 4px; min-width:98px; white-space:nowrap;}
-  .bgrid td.pc input{width:58px; text-align:center; padding:4px 2px;}
+  .bgrid td.pc{padding:3px 4px; min-width:110px; white-space:nowrap;}
+  .bgrid td.pc input{width:68px; text-align:center; padding:4px 2px;}
   .bgrid td.pc button.mini{border:1px solid var(--border); background:#fff; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 5px; color:var(--ok);}
   .bgrid td.pc button.mini:hover{background:#DCFCE7;}
-  .bgrid td.pc.full{background:#DCFCE7;} .bgrid td.pc.part{background:#E3EEFB;} .bgrid td.pc.chg{box-shadow:inset 0 0 0 2px var(--warn);}
+  .bgrid td.pc.full{background:#DCFCE7;} .bgrid td.pc.part{background:#E3EEFB;} .bgrid td.pc.chg{box-shadow:inset 0 0 0 2px var(--warn);} .bgrid td.pc.dec{background:#FEE2E2; box-shadow:inset 0 0 0 2px var(--bad);}
   .bgrid th .btn{margin-top:4px;}
   .bgrid td.dsc{text-align:right; min-width:260px;}
   .stick{position:sticky; inset-inline-start:0; background:#fff;}
@@ -246,9 +246,11 @@ function billCalc(bill){
     return {u, amount, cum, prev:pv, val:r2(cum-pv), cumPct: amount ? cum/amount*100 : 0, prevPct: amount ? pv/amount*100 : 0};
   });
   const tot = k => r2(rows.reduce((s,r)=>s+r[k],0));
-  const work = tot('val'), ret = r2(work*(+bill.retentionPct||0)/100);
+  /* retention and insurance are a % of (work value - deductions), as in the Excel summary; a bill whose cumulative % went DOWN has a negative work value */
+  const work = tot('val');
   const dedList = S.deductions.filter(d=>d.billId===bill.id), ded = r2(dedList.reduce((s,d)=>s+(+d.amount||0),0));
-  return {acc, prev, rows, contract:tot('amount'), cumTot:tot('cum'), prevTot:tot('prev'), work, ret, ded, dedList, net:r2(work-ret-ded)};
+  const ret = r2((work-ded)*(+bill.retentionPct||0)/100), ins = r2((work-ded)*(+bill.insurancePct||0)/100);
+  return {acc, prev, rows, contract:tot('amount'), cumTot:tot('cum'), prevTot:tot('prev'), work, ret, ins, ded, dedList, net:r2(work-ret-ins-ded)};
 }
 
 /* ============================================================== UI state */
@@ -299,6 +301,7 @@ function accountsView(){
         <div><label>שם החשבון (תחום)</label><input type="text" data-af="name" value="${esc(a.name)}" style="width:220px"></div>
         <div><label>קבלן</label><select data-af="contractorId" style="min-width:200px">${contractorOptions(a.contractorId)}</select></div>
         <div><label>עיכבון / ערבות (%) ברירת מחדל לחשבון חדש</label><input type="number" min="0" max="100" step="any" data-af="retentionPct" value="${a.retentionPct||0}" style="width:90px;text-align:center"></div>
+        <div><label>ביטוח (%) ברירת מחדל לחשבון חדש</label><input type="number" min="0" max="100" step="any" data-af="insurancePct" value="${a.insurancePct||0}" style="width:90px;text-align:center"></div>
         <div><label>יחידת כמות</label><input type="text" data-af="qtyLabel" value="${esc(a.qtyLabel||'')}" style="width:110px" placeholder="דירות"></div>
         <button class="btn danger small" id="accDel">מחק חשבון</button></div>
       <label>הערות</label><input type="text" data-af="note" value="${esc(a.note||'')}" style="width:100%">
@@ -317,18 +320,18 @@ function billsView(){
   if(curB) return billEditorView(billById(curB));
   const bills = billsOf(a.id), units = unitsOf(a.id), contract = r2(units.reduce((s,u)=>s+unitAmount(u),0));
   const calcs = bills.map(b=>({b, c:billCalc(b)}));
-  const sumW = r2(calcs.reduce((s,x)=>s+x.c.work,0)), sumR = r2(calcs.reduce((s,x)=>s+x.c.ret,0)), sumD = r2(calcs.reduce((s,x)=>s+x.c.ded,0)), sumN = r2(calcs.reduce((s,x)=>s+x.c.net,0));
+  const sumW = r2(calcs.reduce((s,x)=>s+x.c.work,0)), sumR = r2(calcs.reduce((s,x)=>s+x.c.ret,0)), sumI = r2(calcs.reduce((s,x)=>s+x.c.ins,0)), sumD = r2(calcs.reduce((s,x)=>s+x.c.ded,0)), sumN = r2(calcs.reduce((s,x)=>s+x.c.net,0));
   const lastCum = calcs.length ? calcs[calcs.length-1].c.cumTot : 0;
-  const rows = calcs.map(({b,c})=>`<tr><td><b>${b.num}</b></td><td>${fmt(b.date)}</td><td class="l">${esc(b.period||'')}</td><td class="num">${money(c.cumTot)}</td><td class="num">${money(c.work)}</td><td class="num">${b.retentionPct||0}% · ${money(c.ret)}</td><td class="num">${money(c.ded)}</td><td class="num"><b>${money(c.net)}</b></td><td><span class="pill ${b.status}">${b.status==='approved'?'מאושר':'טיוטה'}</span></td><td><button class="btn small" data-openbill="${b.id}">פתח</button></td></tr>`).join('');
+  const rows = calcs.map(({b,c})=>`<tr><td><b>${b.num}</b></td><td>${fmt(b.date)}</td><td class="l">${esc(b.period||'')}</td><td class="num">${money(c.cumTot)}</td><td class="num">${money(c.work)}</td><td class="num">${b.retentionPct||0}% · ${money(c.ret)}</td><td class="num">${b.insurancePct||0}% · ${money(c.ins)}</td><td class="num">${money(c.ded)}</td><td class="num"><b>${money(c.net)}</b></td><td><span class="pill ${b.status}">${b.status==='approved'?'מאושר':'טיוטה'}</span></td><td><button class="btn small" data-openbill="${b.id}">פתח</button></td></tr>`).join('');
   return accChips('data-bacc', false) + `
     <div class="kpis"><div class="kpi"><div class="k">קבלן</div><div class="v" style="font-size:16px">${esc(conName(a))||'—'}</div></div>
       <div class="kpi"><div class="k">סכום החוזה</div><div class="v">${money(contract)}</div></div>
       <div class="kpi"><div class="k">בוצע מצטבר</div><div class="v">${money(lastCum)}</div><div class="sum">${contract?pctTxt(lastCum/contract*100)+' מהחוזה':''}</div></div>
       <div class="kpi"><div class="k">יתרת חוזה</div><div class="v">${money(contract-lastCum)}</div></div></div>
     <div class="card"><h2>החשבונות החלקיים של "${esc(a.name)}"</h2>
-      <div class="bar"><button class="btn" id="billNew" ${!units.length?'disabled':''}>+ חשבון חלקי חדש</button>${!units.length?'<span class="sum">יש להגדיר יחידות בחשבון לפני פתיחת חשבון חלקי.</span>':''}</div>
-      ${bills.length ? `<div class="scroll"><table><thead><tr><th>מס'</th><th>תאריך</th><th>תקופה / הערה</th><th>ערך מצטבר</th><th>ערך החשבון</th><th>עיכבון</th><th>קיזוזים</th><th>לתשלום</th><th>סטטוס</th><th></th></tr></thead><tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="4">סה"כ</td><td class="num">${money(sumW)}</td><td class="num">${money(sumR)}</td><td class="num">${money(sumD)}</td><td class="num">${money(sumN)}</td><td colspan="2"></td></tr></tfoot></table></div>
+      <div class="bar"><button class="btn" id="billNew" ${!units.length?'disabled':''}>+ חשבון חלקי חדש</button><button class="btn secondary" id="billImport" ${!units.length?'disabled':''}>ייבוא נתונים מאקסל</button>${!units.length?'<span class="sum">יש להגדיר יחידות בחשבון לפני פתיחת חשבון חלקי.</span>':''}</div>
+      ${bills.length ? `<div class="scroll"><table><thead><tr><th>מס'</th><th>תאריך</th><th>תקופה / הערה</th><th>ערך מצטבר</th><th>ערך החשבון</th><th>עיכבון</th><th>ביטוח</th><th>קיזוזים</th><th>לתשלום</th><th>סטטוס</th><th></th></tr></thead><tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="4">סה"כ</td><td class="num">${money(sumW)}</td><td class="num">${money(sumR)}</td><td class="num">${money(sumI)}</td><td class="num">${money(sumD)}</td><td class="num">${money(sumN)}</td><td colspan="2"></td></tr></tfoot></table></div>
         <div class="sum" style="margin-top:6px;">כל הסכומים לפני מע"מ. "ערך החשבון" = ההפרש בין הביצוע המצטבר לחשבון הקודם.</div>` : '<div class="empty">עדיין לא נפתח חשבון חלקי.</div>'}</div>`;
 }
 
@@ -342,16 +345,17 @@ function billEditorView(bill){
     <div class="bar"><div><label>תאריך</label><input type="date" data-bf="date" value="${esc(bill.date||'')}" ${locked?'disabled':''}></div>
       <div><label>תקופה / הערה</label><input type="text" data-bf="period" value="${esc(bill.period||'')}" placeholder="למשל: חשבון ינואר 2027" style="width:240px" ${locked?'disabled':''}></div>
       <div><label>עיכבון / ערבות (%)</label><input type="number" min="0" max="100" step="any" data-bf="retentionPct" value="${bill.retentionPct||0}" style="width:90px;text-align:center" ${locked?'disabled':''}></div>
+      <div><label>ביטוח (%)</label><input type="number" min="0" max="100" step="any" data-bf="insurancePct" value="${bill.insurancePct||0}" style="width:90px;text-align:center" ${locked?'disabled':''}></div>
       <button class="btn secondary small" id="billPrint">🖨 הדפס</button>
       ${locked ? '<button class="btn secondary small" id="billReopen">פתח מחדש לעריכה</button>' : '<button class="btn ok small" id="billApprove">✔ אשר חשבון</button>'}
       ${(!locked && isLast) ? '<button class="btn danger small" id="billDel">מחק חשבון</button>' : ''}</div>
-    <div class="sum">בכל סעיף מזינים את האחוז <b>המצטבר</b> שבוצע מתחילת העבודה (0-100), או לוחצים ✔ ל-100%. התשלום לחשבון = ההפרש מהחשבון הקודם. תא עם מסגרת כתומה שונה מהחשבון הקודם.${locked?' <b>החשבון מאושר ונעול - "פתח מחדש" כדי לערוך.</b>':''}</div></div>
+    <div class="sum">בכל סעיף מזינים את האחוז <b>המצטבר</b> שבוצע מתחילת העבודה (0-100), או לוחצים ✔ ל-100%. התשלום לחשבון = ההפרש מהחשבון הקודם. תא עם מסגרת כתומה שונה מהחשבון הקודם; מסגרת אדומה = האחוז ירד (ערך שלילי בחשבון הזה, ובחשבון הבא העלאה תוסיף אותו מחדש).${locked?' <b>החשבון מאושר ונעול - "פתח מחדש" כדי לערוך.</b>':''}</div></div>
     ${noTpl.length?`<div class="warnbox">ליחידות ${noTpl.map(u=>esc(u.name)).join(', ')} אין כתב כמויות - בחר להן כתב כמויות ב"חשבונות וחוזים".</div>`:''}
     <div id="billGrid">${gridHtml(bill, acc, locked)}</div>
     <div class="card"><h2>קיזוזים</h2><div id="billDed">${dedHtml(bill, locked)}</div></div>
     <div class="card"><h2>סיכום החשבון</h2><div id="billTotals">${totalsHtml(bill)}</div></div>`;
 }
-const bandCls = (v, pv) => (v>=100 ? 'full' : v>0 ? 'part' : '') + (v!==pv ? ' chg' : '');
+const bandCls = (v, pv) => (v>=100 ? 'full' : v>0 ? 'part' : '') + (v!==pv ? ' chg' : '') + (v<pv ? ' dec' : '');
 function cellHtml(bill, prev, u, l, locked){
   const v = pctAt(bill,u.id,l.id), pv = prev ? pctAt(prev,u.id,l.id) : 0;
   return `<td class="pc ${bandCls(v,pv)}" id="c_${u.id}_${l.id}"><input type="number" min="0" max="100" step="any" value="${v||''}" placeholder="0" data-cu="${u.id}" data-cl="${l.id}" title="בחשבון הקודם: ${pv}%" ${locked?'disabled':''}><button class="mini" data-full="${u.id}|${l.id}" title="100%" ${locked?'disabled':''}>✔</button></td>`;
@@ -377,8 +381,9 @@ function totalsHtml(bill){
   return `<div class="scroll"><table><thead><tr><th>יחידה</th><th>מחיר היחידה</th><th>% קודם</th><th>% מצטבר</th><th>ערך קודם</th><th>ערך מצטבר</th><th>ערך בחשבון זה</th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr><td class="l">סה"כ</td><td class="num">${money(c.contract)}</td><td>${pctTxt(c.contract?c.prevTot/c.contract*100:0)}</td><td>${pctTxt(c.contract?c.cumTot/c.contract*100:0)}</td><td class="num">${money(c.prevTot)}</td><td class="num">${money(c.cumTot)}</td><td class="num">${money(c.work)}</td></tr></tfoot></table></div>
     <div class="kpis" style="margin-top:12px;"><div class="kpi"><div class="k">ערך עבודה בחשבון</div><div class="v">${money(c.work)}</div></div>
-      <div class="kpi"><div class="k">עיכבון ${bill.retentionPct||0}%</div><div class="v">-${money(c.ret).replace('-','')}</div></div>
-      <div class="kpi"><div class="k">קיזוזים</div><div class="v">-${money(c.ded).replace('-','')}</div></div>
+      <div class="kpi"><div class="k">קיזוזים</div><div class="v">${money(-c.ded)}</div></div>
+      <div class="kpi"><div class="k">עיכבון ${bill.retentionPct||0}% (מהערך אחרי קיזוזים)</div><div class="v">${money(-c.ret)}</div></div>
+      <div class="kpi"><div class="k">ביטוח ${bill.insurancePct||0}%</div><div class="v">${money(-c.ins)}</div></div>
       <div class="kpi net"><div class="k">לתשלום (לפני מע"מ)</div><div class="v">${money(c.net)}</div></div></div>`;
 }
 /* live refresh after a % change: footers of the grid and the totals card - without re-rendering the inputs (keeps keyboard focus) */
@@ -391,7 +396,7 @@ function refreshLive(){
 function setPct(bill, unitId, lineId, raw){
   const prev = prevBillOf(bill), pv = prev ? pctAt(prev,unitId,lineId) : 0;
   let v = raw===''||raw==null ? 0 : +raw; if(!isFinite(v)) v = 0; v = Math.min(100, Math.max(0, r2(v)));
-  if(v < pv){ toast(`האחוז המצטבר לא יכול לרדת מתחת לחשבון הקודם (${pv}%)`); v = pv; }
+  /* a lower cumulative % than the previous bill is allowed: this bill then shows a negative value, and a later rise adds it back */
   const id = `e_${bill.id}_${unitId}_${lineId}`, ex = S.entries.find(e=>e.id===id);
   if(ex) ex.pct = v; else S.entries.push({id, billId:bill.id, unitId, lineId, pct:v});
   invalidate(); saveAll();
@@ -471,6 +476,142 @@ function openBoqImport(tid){
     let ord = nextOrd(linesOf(tid));
     rows.forEach(r=> S.lines.push({id:uid('ln'), templateId:tid, num:r.num, desc:r.desc, pct:r.pct, ord:ord++}));
     invalidate(); saveAll(); closeModal(); render(); toast(`יובאו ${rows.length} סעיפים`);
+  };
+}
+
+/* ---------- import of the progress data from the temporary Excel files ("חשבון חלקי ... - מבנים וריכוז.xlsx") ----------
+   Each building / basement sheet holds the cumulative % per line and bill (columns E..N = bills 1..10, rows of the line numbers); a date row sits under the
+   header; the summary sheet holds retention %, insurance % and deductions per bill (columns D..M). Sheets are matched to the account's units by name.
+   A blank cell means "no change from the previous bill" - exactly like a bill without an entry in this app. */
+const HEB_MONTHS = {'ינו':1,'ינואר':1,'פבר':2,'פברואר':2,'מרץ':3,'מרס':3,'אפר':4,'אפריל':4,'מאי':5,'יונ':6,'יוני':6,'יול':7,'יולי':7,'אוג':8,'אוגוסט':8,'ספט':9,'ספטמבר':9,'אוק':10,'אוקטובר':10,'נוב':11,'נובמבר':11,'דצמ':12,'דצמבר':12};
+const HEB_MONTH_NAMES = ['','ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+/* a month cell (Excel date serial, or text like "יולי26") -> {iso:'YYYY-MM-01', label:'אוקטובר 2026'} or null */
+function parseMonthCell(v){
+  let y = 0, m = 0;
+  if(typeof v==='number' && v>20000 && v<80000){ const d = new Date(Math.round((v-25569)*86400000)); y = d.getUTCFullYear(); m = d.getUTCMonth()+1; }
+  else if(typeof v==='string'){
+    const t = v.trim().match(/^([֐-׿"'׳]+?)[\s\-\/.]*(\d{2,4})$/);
+    if(t){ const key = t[1].replace(/["'׳]/g,''); m = HEB_MONTHS[key] || HEB_MONTHS[key.slice(0,3)] || 0; y = +t[2]; if(y<100) y += 2000; }
+  }
+  if(!m || !y) return null;
+  return {iso:`${y}-${pad(m)}-01`, label:`${HEB_MONTH_NAMES[m]} ${y}`};
+}
+function sheetRows(ws){
+  const ref = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1'); ref.s.r = 0; ref.s.c = 0;
+  const copy = Object.assign({}, ws); copy['!ref'] = XLSX.utils.encode_range(ref);
+  return XLSX.utils.sheet_to_json(copy, {header:1, raw:true, defval:null});
+}
+const NBILLS_XL = 10;
+function parseBillWorkbook(wb, acc){
+  const res = {bills:new Map(), warnings:[], unitsFound:0, contractor:''};
+  const getBill = k=>{ if(!res.bills.has(k)) res.bills.set(k, {k, month:null, entries:[], retentionPct:null, insurancePct:null, deduction:0}); return res.bills.get(k); };
+  const units = unitsOf(acc.id);
+  wb.SheetNames.forEach((name, si)=>{
+    const rows = sheetRows(wb.Sheets[name]);
+    const hr = rows.findIndex(r=> r && String(r[0]||'').trim()==='סעיף');
+    if(hr<0){
+      /* the summary sheet: retention %, insurance % and deductions per bill */
+      const find = pre => rows.find(r=> r && String(r[0]||'').trim().startsWith(pre));
+      const ret = find('עיכבון / ערבות (%)'), ins = find('ביטוח באחוזים'), ded = find('קיזוזים');
+      if(!ret && !ins && !ded) return;
+      for(let k=1;k<=NBILLS_XL;k++){
+        const num = r=> (r && typeof r[2+k]==='number') ? r[2+k] : null;
+        const rv = num(ret), iv = num(ins), dv = num(ded);
+        if(rv==null && iv==null && !dv) continue;
+        const b = getBill(k);
+        if(rv!=null) b.retentionPct = r2(rv<=1 ? rv*100 : rv);
+        if(iv!=null) b.insurancePct = r2(iv<=1 ? iv*100 : iv);
+        if(dv) b.deduction = r2(dv);
+      }
+      const con = rows[1] && typeof rows[1][1]==='string' ? rows[1][1].trim() : '';
+      if(con) res.contractor = con;
+      return;
+    }
+    const unit = units.find(u=> u.name===String(name).trim());
+    if(!unit){ res.warnings.push(`הלשונית "${name}" לא תואמת אף יחידה בחשבון - דולגה`); return; }
+    res.unitsFound++;
+    const lines = linesOf(unit.templateId);
+    /* dates: the row below the header, when its first cell is empty */
+    const dr = rows[hr+1];
+    if(dr && (dr[0]==null || dr[0]==='')){ for(let k=1;k<=NBILLS_XL;k++){ const m = parseMonthCell(dr[3+k]); if(m){ const b = getBill(k); if(!b.month) b.month = m; } } }
+    for(let r=hr+1; r<rows.length; r++){
+      const row = rows[r]; if(!row) continue;
+      const num = String(row[0]==null ? '' : row[0]).trim();
+      if(!/^\d+$/.test(num)) continue;
+      const line = lines.find(l=>String(l.num)===num);
+      if(!line){ res.warnings.push(`${name}: סעיף ${num} לא קיים בכתב הכמויות של היחידה`); continue; }
+      for(let k=1;k<=NBILLS_XL;k++){
+        const v = row[3+k]; if(typeof v!=='number') continue;
+        const pct = Math.min(100, Math.max(0, Math.round((v<=1 ? v*100 : v)*10000)/10000));   // 4 decimals: the Excel holds values such as 46.13756%
+        getBill(k).entries.push({unitId:unit.id, lineId:line.id, pct});
+      }
+    }
+  });
+  /* only bills that carry data; and a continuous numbering from 1 */
+  [...res.bills.keys()].forEach(k=>{ const b = res.bills.get(k); if(!b.entries.length && !b.deduction) res.bills.delete(k); });
+  res.maxK = res.bills.size ? Math.max(...res.bills.keys()) : 0;
+  return res;
+}
+function applyBillImport(acc, res){
+  let created = 0, replaced = 0, entriesN = 0;
+  for(let k=1;k<=res.maxK;k++){
+    const d = res.bills.get(k) || {k, month:null, entries:[], retentionPct:null, insurancePct:null, deduction:0};
+    let bill = billsOf(acc.id).find(b=>b.num===k);
+    if(bill){
+      replaced++;
+      const old = new Set(S.entries.filter(e=>e.billId===bill.id).map(e=>e.id));
+      S.entries = S.entries.filter(e=>!old.has(e.id));
+      S.deductions = S.deductions.filter(x=> !(x.billId===bill.id && x.srcKey==='excel'));
+    } else {
+      bill = {id:uid('b'), accountId:acc.id, num:k, date:'', period:'', retentionPct:acc.retentionPct||0, insurancePct:acc.insurancePct||0, status:'draft'};
+      S.bills.push(bill); created++;
+    }
+    if(d.month){ bill.date = d.month.iso; bill.period = 'חשבון חודש ' + d.month.label; }
+    if(d.retentionPct!=null) bill.retentionPct = d.retentionPct;
+    if(d.insurancePct!=null) bill.insurancePct = d.insurancePct;
+    d.entries.forEach(e=>{ S.entries.push({id:`e_${bill.id}_${e.unitId}_${e.lineId}`, billId:bill.id, unitId:e.unitId, lineId:e.lineId, pct:e.pct}); entriesN++; });
+    if(d.deduction) S.deductions.push({id:uid('d'), billId:bill.id, reason:'קיזוזים (מייבוא האקסל)', amount:d.deduction, srcKey:'excel'});
+  }
+  invalidate();
+  return {created, replaced, entriesN};
+}
+function openBillImport(accId){
+  const acc = accById(accId); if(!acc) return;
+  modal(`<h2>ייבוא נתונים מאקסל</h2><div class="sub">${esc(acc.name)} · קובץ "חשבון חלקי ... - מבנים וריכוז.xlsx"</div>
+    <div class="sum" style="margin-bottom:8px;">נקראים האחוזים המצטברים בלשוניות המבנים והחניון (מתאימים ליחידות לפי שם הלשונית), התאריכים, והעיכבון / ביטוח / קיזוזים מלשונית הריכוז. חשבון שכבר קיים באפליקציה יוחלף. מחירי היחידות וכתב הכמויות נשארים כפי שהם באפליקציה.</div>
+    <div id="xlDrop" style="border:2px dashed var(--navy); border-radius:10px; padding:18px; text-align:center; cursor:pointer; background:#F8FAFD; margin-bottom:10px;"><b>גרור לכאן את קובץ האקסל, או לחץ לבחירה</b><input type="file" id="xlFile" accept=".xlsx,.xlsm" style="display:none;"></div>
+    <div id="xlPreview"></div>
+    <div class="right"><button class="btn" id="xlGo" disabled>ייבא</button><button class="btn secondary" id="xlCancel">ביטול</button></div>`);
+  let parsed = null;
+  const prev = document.getElementById('xlPreview'), go = document.getElementById('xlGo');
+  const load = async f=>{
+    try{
+      prev.innerHTML = '<div class="sum">קורא את הקובץ...</div>'; go.disabled = true;
+      await loadScriptOnce(SHEETJS_URL);
+      parsed = parseBillWorkbook(XLSX.read(await f.arrayBuffer(), {type:'array'}), acc);
+      const ex = k => billsOf(acc.id).find(b=>b.num===k);
+      if(!parsed.maxK){ prev.innerHTML = '<div class="warnbox">לא נמצאו נתוני ביצוע בקובץ.' + (parsed.warnings.length?'<br>'+parsed.warnings.map(esc).join('<br>'):'') + '</div>'; return; }
+      let rows = '';
+      for(let k=1;k<=parsed.maxK;k++){ const d = parsed.bills.get(k), e = ex(k);
+        rows += `<tr><td><b>${k}</b></td><td>${d&&d.month?esc(d.month.label):'—'}</td><td>${d?d.entries.length:0}</td><td>${d&&d.retentionPct!=null?d.retentionPct+'%':'—'}</td><td>${d&&d.insurancePct!=null?d.insurancePct+'%':'—'}</td><td>${d&&d.deduction?money(d.deduction):'—'}</td><td>${e?'<span class="neg">קיים - יוחלף</span>':'חדש'}</td></tr>`; }
+      const exist = [...Array(parsed.maxK).keys()].some(i=>ex(i+1));
+      prev.innerHTML = `<div class="sum" style="margin-bottom:6px;">זוהו ${parsed.unitsFound} יחידות.${parsed.contractor?' קבלן בקובץ: '+esc(parsed.contractor)+'.':''}</div>
+        <div class="scroll"><table><thead><tr><th>חשבון</th><th>חודש</th><th>תאי ביצוע</th><th>עיכבון</th><th>ביטוח</th><th>קיזוזים</th><th>מצב</th></tr></thead><tbody>${rows}</tbody></table></div>
+        ${parsed.warnings.length?`<div class="warnbox" style="margin-top:8px;">${parsed.warnings.map(esc).join('<br>')}</div>`:''}
+        ${exist?'<label class="inl" style="margin-top:8px;"><input type="checkbox" id="xlOk"> אני מאשר החלפת הנתונים בחשבונות הקיימים</label>':''}`;
+      const ok = document.getElementById('xlOk');
+      go.disabled = !!ok; if(ok) ok.onchange = ()=>{ go.disabled = !ok.checked; };
+    }catch(e){ parsed = null; prev.innerHTML = `<div class="warnbox">${esc(e.message||String(e))}</div>`; }
+  };
+  const drop = document.getElementById('xlDrop'), fi = document.getElementById('xlFile');
+  drop.onclick = ()=> fi.click(); fi.onchange = ()=>{ if(fi.files[0]) load(fi.files[0]); };
+  drop.ondragover = e=>{ e.preventDefault(); }; drop.ondrop = e=>{ e.preventDefault(); const f = e.dataTransfer.files[0]; if(f) load(f); };
+  document.getElementById('xlCancel').onclick = closeModal;
+  go.onclick = ()=>{
+    if(!parsed) return;
+    const r = applyBillImport(acc, parsed);
+    if(parsed.contractor && !acc.contractorId){ const c = S.contractors.find(x=>x.name===parsed.contractor); if(c) acc.contractorId = c.id; }
+    saveAll(); closeModal(); curB = ''; render(); toast(`יובאו ${r.entriesN} תאי ביצוע: ${r.created} חשבונות חדשים, ${r.replaced} הוחלפו`);
   };
 }
 
@@ -595,7 +736,8 @@ function printBill(bill, detail, onlyChanged){
     <tfoot><tr><td class="l"><b>סה"כ</b></td><td><b>${money(c.contract)}</b></td><td>${pctTxt(c.contract?c.prevTot/c.contract*100:0)}</td><td>${pctTxt(c.contract?c.cumTot/c.contract*100:0)}</td><td><b>${money(c.prevTot)}</b></td><td><b>${money(c.cumTot)}</b></td><td><b>${money(c.work)}</b></td></tr></tfoot></table>`;
   const dedRows = c.dedList.map(d=>`<tr><td class="l">${esc(d.reason||'קיזוז')}</td><td>-${money(d.amount)}</td></tr>`).join('');
   const calcTable = `<table style="width:60%;"><tbody><tr><td class="l">ערך עבודה בחשבון זה</td><td>${money(c.work)}</td></tr>
-    <tr><td class="l">עיכבון ${bill.retentionPct||0}%</td><td>-${money(c.ret)}</td></tr>${dedRows}
+    ${dedRows}<tr><td class="l">עיכבון ${bill.retentionPct||0}% (מהערך אחרי קיזוזים)</td><td>${money(-c.ret)}</td></tr>
+    <tr><td class="l">ביטוח ${bill.insurancePct||0}%</td><td>${money(-c.ins)}</td></tr>
     <tr class="tot"><td class="l"><b>לתשלום (לפני מע"מ)</b></td><td><b>${money(c.net)}</b></td></tr></tbody></table>`;
   let html = `<div class="pg"><h1>חשבון חלקי מס' ${bill.num} - ${esc(acc.name)}</h1>
     <div class="meta"><span><b>קבלן:</b> ${esc(conName(acc))||'—'}</span><span><b>תאריך:</b> ${fmt(bill.date)}</span>${bill.period?`<span><b>תקופה:</b> ${esc(bill.period)}</span>`:''}<span><b>סכום החוזה:</b> ${money(c.contract)}</span></div>
@@ -630,7 +772,7 @@ function wire(){
   on('[data-acc]', el=> el.onclick = ()=>{ curA = el.dataset.acc; render(); });
   on('[data-bacc]', el=> el.onclick = ()=>{ curA = el.dataset.bacc; curB = ''; render(); });
   /* ---- accounts tab */
-  on('[data-af]', el=> el.onchange = ()=>{ const a = accById(curA); if(!a) return; const f = el.dataset.af; a[f] = f==='retentionPct' ? Math.min(100,Math.max(0,+el.value||0)) : (f==='name'||f==='qtyLabel' ? cleanName(el.value) : el.value); saveAll(); if(f==='name'||f==='contractorId'||f==='qtyLabel') render(); });
+  on('[data-af]', el=> el.onchange = ()=>{ const a = accById(curA); if(!a) return; const f = el.dataset.af; a[f] = (f==='retentionPct'||f==='insurancePct') ? Math.min(100,Math.max(0,+el.value||0)) : (f==='name'||f==='qtyLabel' ? cleanName(el.value) : el.value); saveAll(); if(f==='name'||f==='contractorId'||f==='qtyLabel') render(); });
   const ad = document.getElementById('accDel'); if(ad) ad.onclick = ()=>{
     const a = accById(curA); if(!a) return;
     if(!confirm(`למחוק את החשבון "${a.name}" כולל כל היחידות והחשבונות החלקיים שלו? הפעולה אינה הפיכה.`)) return;
@@ -657,14 +799,15 @@ function wire(){
   const bn = document.getElementById('billNew'); if(bn) bn.onclick = ()=>{
     const a = accById(curA), list = billsOf(a.id), last = list[list.length-1];
     if(last && last.status!=='approved' && !confirm(`חשבון חלקי מס' ${last.num} עדיין בטיוטה (לא אושר). לפתוח בכל זאת חשבון חדש?`)) return;
-    const b = {id:uid('b'), accountId:a.id, num:(last?last.num:0)+1, date:todayStr(), period:'', retentionPct:last?(last.retentionPct||0):(a.retentionPct||0), status:'draft'};
+    const b = {id:uid('b'), accountId:a.id, num:(last?last.num:0)+1, date:todayStr(), period:'', retentionPct:last?(last.retentionPct||0):(a.retentionPct||0), insurancePct:last?(last.insurancePct||0):(a.insurancePct||0), status:'draft'};
     S.bills.push(b); curB = b.id; invalidate(); saveAll(); render();
   };
+  const bi = document.getElementById('billImport'); if(bi) bi.onclick = ()=> openBillImport(curA);
   on('[data-openbill]', el=> el.onclick = ()=>{ curB = el.dataset.openbill; render(); });
   const bb = document.getElementById('billBack'); if(bb) bb.onclick = ()=>{ curB = ''; render(); };
   const bill = curB ? billById(curB) : null;
   if(bill){
-    on('[data-bf]', el=> el.onchange = ()=>{ const f = el.dataset.bf; bill[f] = f==='retentionPct' ? Math.min(100,Math.max(0,+el.value||0)) : el.value; saveAll(); if(f==='retentionPct') refreshLive(); });
+    on('[data-bf]', el=> el.onchange = ()=>{ const f = el.dataset.bf; bill[f] = (f==='retentionPct'||f==='insurancePct') ? Math.min(100,Math.max(0,+el.value||0)) : el.value; saveAll(); if(f==='retentionPct'||f==='insurancePct') refreshLive(); });
     on('[data-cu]', el=> el.onchange = ()=>{ setPct(bill, el.dataset.cu, el.dataset.cl, el.value); refreshLive(); });
     on('[data-full]', el=> el.onclick = ()=>{ const [u,l] = el.dataset.full.split('|'); setPct(bill,u,l,100); refreshLive(); });
     on('[data-ucol]', el=> el.onclick = ()=>{ const u = S.units.find(x=>x.id===el.dataset.ucol); linesOf(u.templateId).forEach(l=> setPct(bill,u.id,l.id,100)); refreshLive(); });
