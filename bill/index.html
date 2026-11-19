@@ -190,9 +190,9 @@ function addSeed(d, key){
   s.lb.forEach((r,i)=> d.lines.push({id:'ln_'+k+'b'+r[0], templateId:s.tb, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
   s.lp.forEach((r,i)=> d.lines.push({id:'ln_'+k+'p'+r[0], templateId:s.tp, num:String(r[0]), desc:r[1], pct:r[2], ord:i+1}));
   d.accounts.push({id:s.id, name:s.name, contractorId:'', retentionPct:0, qtyLabel:'דירות', note:'', ord:s.ord});
-  /* the rate per quantity unit has two decimals only (4,420,000 / 174 = 25,402.30), so the buildings add up to 20 agorot above 4,420,000 */
-  ELEC_APTS.forEach((n,i)=> d.units.push({id:s.up+'b'+(i+1), accountId:s.id, name:'מבנה '+(i+1), templateId:s.tb, qty:n, rate:r2(s.rb), ord:i+1}));
-  d.units.push({id:s.up+'base', accountId:s.id, name:'חניון תת קרקעי', templateId:s.tp, qty:174, rate:r2(s.rp), ord:12});
+  /* the rate keeps its full precision (4,420,000 / 174 = 25,402.2988...) so the buildings add up to exactly 4,420,000; it is only DISPLAYED with two decimals */
+  ELEC_APTS.forEach((n,i)=> d.units.push({id:s.up+'b'+(i+1), accountId:s.id, name:'מבנה '+(i+1), templateId:s.tb, qty:n, rate:s.rb, ord:i+1}));
+  d.units.push({id:s.up+'base', accountId:s.id, name:'חניון תת קרקעי', templateId:s.tp, qty:174, rate:s.rp, ord:12});
   d.seeds = (d.seeds||[]).concat(key);
 }
 let seeded = [];
@@ -206,11 +206,14 @@ function applyData(d){
   let added = false;
   Object.keys(SEEDS).forEach(key=>{ if(!base.seeds.includes(key)){ addSeed(base, key); added = true; } });
   COLLECTIONS.forEach(n=> S[n] = base[n]); seeded = base.seeds;
-  /* rate per quantity unit: two decimals only (also fixes rates saved earlier with a long fraction) */
-  let rounded = false;
-  S.units.forEach(u=>{ const r = r2(u.rate); if(r !== u.rate){ u.rate = r; rounded = true; } });
+  /* one-time repair: for a short while the plumbing rate was saved rounded (25,402.30); put the exact value back (the rate is only displayed with two decimals) */
+  let repaired = false;
+  if(!base.seeds.includes('rate-exact-v1')){
+    S.units.forEach(u=>{ if(/^up_b\d+$/.test(u.id) && u.rate===25402.3){ u.rate = SEEDS.plumb.rb; } });
+    base.seeds.push('rate-exact-v1'); repaired = true;
+  }
   invalidate();
-  if(fresh || added || rounded) setTimeout(saveAll, 0);
+  if(fresh || added || repaired) setTimeout(saveAll, 0);
 }
 
 /* ---- lookups and calculations */
@@ -222,7 +225,7 @@ const billById = id => S.bills.find(b=>b.id===id);
 const billsOf = aid => S.bills.filter(b=>b.accountId===aid).sort((a,b)=>a.num-b.num);
 const conById = id => S.contractors.find(c=>c.id===id);
 const conName = acc => { const c = acc && conById(acc.contractorId); return c ? c.name : ''; };
-const unitAmount = u => r2((+u.qty||0)*(+u.rate||0));
+const unitAmount = u => (+u.qty||0)*(+u.rate||0);   // full precision; money() shows two decimals
 const lineSum = tid => r2(linesOf(tid).reduce((s,l)=>s+(+l.pct||0),0));
 let _ent = null;
 function invalidate(){ _ent = null; }
@@ -714,7 +717,7 @@ function openUnitsModal(accId){
   document.getElementById('edCancel').onclick = closeModal;
   document.getElementById('bkGo').onclick = ()=>{
     const n = Math.max(1, Math.min(60, +document.getElementById('bkCnt').value||1)), from = +document.getElementById('bkFrom').value||1, pre = document.getElementById('bkPre').value;
-    const tid = document.getElementById('bkTpl').value, qty = +document.getElementById('bkQty').value||0, rate = Math.max(0, r2(document.getElementById('bkRate').value));
+    const tid = document.getElementById('bkTpl').value, qty = +document.getElementById('bkQty').value||0, rate = Math.max(0, +document.getElementById('bkRate').value||0);
     let ord = nextOrd(unitsOf(accId));
     for(let i=0;i<n;i++) S.units.push({id:uid('u'), accountId:accId, name:cleanName(pre+(from+i)), templateId:tid, qty, rate, ord:ord++});
     saveAll(); closeModal(); render(); toast(`נוספו ${n} יחידות`);
@@ -782,8 +785,8 @@ function wire(){
   const ub = document.getElementById('unitBulk'); if(ub) ub.onclick = ()=> openUnitsModal(curA);
   on('[data-uf]', el=> el.onchange = ()=>{
     const u = S.units.find(x=>x.id===el.dataset.uid); if(!u) return; const f = el.dataset.uf;
-    u[f] = f==='rate' ? Math.max(0, r2(el.value)) : (f==='qty' ? Math.max(0, +el.value||0) : (f==='name' ? cleanName(el.value) : el.value));
-    if(f==='rate') el.value = u.rate.toFixed(2);
+    u[f] = (f==='rate'||f==='qty') ? Math.max(0, +el.value||0) : (f==='name' ? cleanName(el.value) : el.value);
+    if(f==='rate') el.value = u.rate.toFixed(2);   // display only - the stored rate keeps what was typed
     saveAll();
     if(f==='qty'||f==='rate'){ const c = document.getElementById('amt_'+u.id); if(c) c.innerHTML = '<b>'+money(unitAmount(u))+'</b>'; const t = document.getElementById('unitsTotal'); if(t) t.textContent = money(unitsOf(curA).reduce((s,x)=>s+unitAmount(x),0)); }
     else if(f==='templateId') render();
