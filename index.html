@@ -400,6 +400,8 @@
   h3.sec-h{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
   .sec-add{display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; border-radius:50%; border:1px solid var(--navy); background:#fff; color:var(--navy); font-size:19px; line-height:1; font-weight:bold; cursor:pointer; font-family:inherit;}
   .sec-add:hover{background:var(--navy); color:#fff;}
+  .sec-bottom{margin:8px 0 4px;}
+  .no-print .sec-bottom{display:none;}
   .searchbar{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;}
   .searchbar > div{flex:1; min-width:150px;}
   .log-result{border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:10px; background:#FAFBFC;}
@@ -1326,6 +1328,10 @@ function buildLogoImg(){
 /* Section heading of the daily-log form with a "+" add button next to the title (e.g. "יומיות +"). The button keeps the old add-button id. */
 function secHeading(title, btnId, tip, style){
   return `<h3 class="sec-h" style="${style||'margin-top:22px;'}">${title} <button type="button" class="sec-add no-print" id="${btnId}" title="${esc(tip)}" aria-label="${esc(tip)}">+</button></h3>`;
+}
+/* Second "+" under the opened table (hidden while the section is empty, i.e. while the heading "+" is the only one). Clicking it presses the heading button. */
+function secBottom(btnId, tip){
+  return `<div class="sec-bottom no-print"><button type="button" class="sec-add" data-proxy="${btnId}" title="${esc(tip)}" aria-label="${esc(tip)}">+</button></div>`;
 }
 function buildCompanyInfoLine(){
   if(!(company.name || company.license)) return '';
@@ -3117,21 +3123,25 @@ function renderDailyLog(main, loadId){
     <div id="attendanceSection" class="${draft.attendance.length===0?'no-print':''}">
       ${secHeading('נוכחות קבלני משנה','addAttendance','הוסף קבלן לנוכחות היום','margin-top:18px;')}
       <div id="attendanceRows"></div>
+      ${secBottom('addAttendance','הוסף קבלן לנוכחות היום')}
     </div>
 
     <div id="equipmentSection" class="${draft.equipment.length===0?'no-print':''}">
       ${secHeading('נוכחות כלי צמ"ה','addEquipment','הוסף כלי צמ"ה')}
       <div id="equipmentRows"></div>
+      ${secBottom('addEquipment','הוסף כלי צמ"ה')}
     </div>
 
     <div id="executionSection" class="${draft.execution.length===0?'no-print':''}">
       ${secHeading('תיעוד ביצוע','addExecution','הוסף מיקום לתיעוד ביצוע')}
       <div id="executionRows"></div>
+      ${secBottom('addExecution','הוסף מיקום לתיעוד ביצוע')}
     </div>
 
     <div id="dailyWorkSection" class="${draft.dailyWork.length===0?'no-print':''}">
       ${secHeading('יומיות','addDailyWork','הוסף רישום יומית')}
       <div id="dailyWorkRows"></div>
+      ${secBottom('addDailyWork','הוסף רישום יומית')}
     </div>
 
     <div id="photosSection" class="${draft.photos.length===0?'no-print':''}">
@@ -3139,36 +3149,43 @@ function renderDailyLog(main, loadId){
         <span class="paste-zone no-print" id="photosPasteZone" tabindex="0" title="העתק תמונה (למשל צילום מסך), לחץ כאן ואז Ctrl+V - או לחץ והדפדפן יבקש הרשאה לקרוא מהלוח">📋 הדבק תמונה</span></h3>
       <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
       <div class="photos-grid log-photos" id="photosGrid"></div>
+      <div class="sec-bottom no-print"><label for="photoInput" class="sec-add" title="הוסף תמונות">+</label></div>
     </div>
 
     <div id="visitorsSection" class="${draft.visitors.length===0?'no-print':''}">
       ${secHeading('יומן ביקורים באתר','addVisitor','הוסף רישום ביקור')}
       <div id="visitorRows"></div>
+      ${secBottom('addVisitor','הוסף רישום ביקור')}
     </div>
 
     <div id="exceptionsSection" class="${draft.exceptions.length===0?'no-print':''}">
       ${secHeading('חריגים','addException','הוסף חריג')}
       <div id="exceptionsRows"></div>
+      ${secBottom('addException','הוסף חריג')}
     </div>
 
     <div id="planningSection" class="${draft.planning.length===0?'no-print':''}">
       ${secHeading('תכנון','addPlanning','הוסף תכנון')}
       <div id="planningRows"></div>
+      ${secBottom('addPlanning','הוסף תכנון')}
     </div>
 
     <div id="ordersPlacedSection" class="${draft.ordersPlaced.length===0?'no-print':''}">
       ${secHeading('הזמנות שבוצעו','addOrderPlaced','הוסף הזמנה שבוצעה')}
       <div id="ordersPlacedRows"></div>
+      ${secBottom('addOrderPlaced','הוסף הזמנה שבוצעה')}
     </div>
 
     <div id="ordersSection" class="${draft.orders.length===0?'no-print':''}">
       ${secHeading('הזמנות שהתקבלו','addOrder','הוסף הזמנה שהתקבלה')}
       <div id="ordersRows"></div>
+      ${secBottom('addOrder','הוסף הזמנה שהתקבלה')}
     </div>
 
     <div id="deductionsSection" class="${draft.deductions.length===0?'no-print':''}">
       ${secHeading('קיזוזים מקבלן','addDeduction','הוסף קיזוז')}
       <div id="deductionsRows"></div>
+      ${secBottom('addDeduction','הוסף קיזוז')}
     </div>
 
     <div id="notesSection" class="${(!draft.notes.trim() && draft.notesPhotos.length===0)?'no-print':''}">
@@ -3284,6 +3301,7 @@ function renderDailyLog(main, loadId){
     draft.execution.push({id:uid('exec'), locationId:'', contractorId:'', crewId:'', description:''});
     renderExecutionRows(); scheduleAutosave();
   };
+  document.querySelectorAll('[data-proxy]').forEach(b=>{ b.onclick = ()=>{ const t = document.getElementById(b.dataset.proxy); if(t) t.click(); }; });
   document.getElementById('addVisitor').onclick = ()=>{ draft.visitors.push({id:uid('visitor'), name:'', org:'', purpose:'', instructions:''}); renderVisitorRows(); scheduleAutosave(); };
 
   // Shared by the file picker and by paste (Ctrl+V / "הדבק" button, see attachPasteZone)
@@ -4245,11 +4263,18 @@ async function photoOrPdfDataUrl(file, maxDim, quality){
    (see renderToolbox below), once there's actually data to pick a default from. */
 let toolboxProjectId = '';
 let toolboxMonth = todayStr().slice(0,7); // 'YYYY-MM'
+let toolboxCrewFilter = []; // crew ids chosen for filling (one or several); empty = all crews
 let toolboxSearchQuery = ''; // free-text filter on ת.ז/דרכון (substring match), kept across re-renders
 const HEBREW_WEEKDAY_SHORT = ['א','ב','ג','ד','ה','ו','ש']; // Date.getDay(): 0=Sunday..6=Saturday
 function toolboxDaysInMonth(yyyyMm){
   const [y,m] = yyyyMm.split('-').map(Number);
   return new Date(y, m, 0).getDate();
+}
+function toolboxCrewBtnLabel(){
+  const ids = toolboxCrewFilter.filter(id=>crews.some(c=>c.id===id));
+  if(ids.length===0) return '👥 קבוצות: הכול';
+  if(ids.length===1) return '👥 קבוצה: ' + (crews.find(c=>c.id===ids[0]).name||'');
+  return '👥 ' + ids.length + ' קבוצות נבחרו';
 }
 function toolboxDateStr(day){ return `${toolboxMonth}-${String(day).padStart(2,'0')}`; }
 function renderToolbox(main){
@@ -4270,8 +4295,22 @@ function renderToolbox(main){
       <div class="field"><label>חודש *</label><input type="month" id="tbx_month" value="${toolboxMonth}"></div>
       <div class="field"><label>חיפוש לפי ת.ז / דרכון</label><input id="tbx_search" placeholder="הקלידו חלק מהמספר..." value="${esc(toolboxSearchQuery)}"></div>
     </div>
-    <div class="row-actions no-print" style="margin-top:0;"><button class="btn small" id="tbx_saveBtn" title="השינויים נשמרים אוטומטית; הכפתור שומר מיד ומאשר שהכול הגיע ל-Drive">💾 שמור</button></div>
+    <div class="row-actions no-print" style="margin-top:0;"><button class="btn small" id="tbx_saveBtn" title="השינויים נשמרים אוטומטית; הכפתור שומר מיד ומאשר שהכול הגיע ל-Drive">💾 שמור</button>${printableContractors.length>0 ? `<button class="btn small secondary" id="tbx_crewBtn" title="בחירת קבוצה אחת או כמה קבוצות למילוי הנוכחות">${esc(toolboxCrewBtnLabel())}</button>` : ''}</div>
     </div>
+    ${printableContractors.length>0 ? `
+    <div class="no-print" id="tbx_crewPicker" style="display:none; margin-top:8px; padding:10px; border:1px solid var(--border); border-radius:8px; background:#fff;">
+      <label style="display:block; margin-bottom:6px;">בחרו קבוצה אחת או כמה קבוצות (גם של קבלנים שונים) - רק הן יוצגו למילוי. בלי בחירה מוצגות כל הקבוצות:</label>
+      <div class="pb-list">
+        ${printableContractors.map(c=>{ const cs = sortCrewsAlpha(crewsForContractor(c.id)); return `
+          <div class="pb-contractor"><label class="pb-cname"><input type="checkbox" class="tbx-contractor-cb" data-crews="${cs.map(x=>x.id).join(',')}"> ${esc(c.name)}</label>
+            ${cs.map(cr=>{
+              const n = workers.filter(w=>w.crewId===cr.id && w.active!==false).length;
+              return `<label class="pb-crew"><input type="checkbox" class="tbx-crew-cb" value="${cr.id}" ${toolboxCrewFilter.includes(cr.id)?'checked':''}> ${esc(cr.name)} <span class="pb-n">(${n})</span></label>`;
+            }).join('')}
+          </div>`; }).join('')}
+      </div>
+      <div class="row-actions" style="margin-top:8px;"><button class="btn small secondary" id="tbx_crewAll">הצג את כל הקבוצות</button><button class="btn small secondary" id="tbx_crewClose">סגור</button></div>
+    </div>` : ''}
     <div id="tbx_body" style="margin-top:8px;"></div>
     ${printableContractors.length>0 ? `
     <div class="row-actions no-print" style="margin-top:18px; border-top:1px dashed var(--border); padding-top:14px;">
@@ -4299,6 +4338,29 @@ function renderToolbox(main){
   document.getElementById('tbx_saveBtn').onclick = flushSave;
   const setStickyH = ()=>{ const s = document.getElementById('tbx_sticky'); if(s) document.documentElement.style.setProperty('--tbx-sticky-h', s.offsetHeight + 'px'); };
   setStickyH(); window.addEventListener('resize', setStickyH); setTimeout(setStickyH, 50);
+  if(printableContractors.length>0){
+    const picker = document.getElementById('tbx_crewPicker');
+    const syncCrewPicker = ()=>{
+      document.getElementById('tbx_crewBtn').textContent = toolboxCrewBtnLabel();
+      picker.querySelectorAll('.tbx-crew-cb').forEach(cb=>{ cb.checked = toolboxCrewFilter.includes(cb.value); });
+      picker.querySelectorAll('.tbx-contractor-cb').forEach(cb=>{
+        const ids = (cb.dataset.crews||'').split(','); const n = ids.filter(i=>toolboxCrewFilter.includes(i)).length;
+        cb.checked = n===ids.length; cb.indeterminate = n>0 && n<ids.length;
+      });
+    };
+    document.getElementById('tbx_crewBtn').onclick = ()=>{ picker.style.display = picker.style.display==='none' ? 'block' : 'none'; };
+    document.getElementById('tbx_crewClose').onclick = ()=>{ picker.style.display = 'none'; };
+    document.getElementById('tbx_crewAll').onclick = ()=>{ toolboxCrewFilter = []; syncCrewPicker(); renderToolboxMatrix(); };
+    picker.querySelectorAll('.tbx-crew-cb').forEach(cb=>{ cb.onchange = ()=>{
+      toolboxCrewFilter = Array.from(picker.querySelectorAll('.tbx-crew-cb:checked')).map(x=>x.value); syncCrewPicker(); renderToolboxMatrix();
+    }; });
+    picker.querySelectorAll('.tbx-contractor-cb').forEach(cb=>{ cb.onchange = ()=>{
+      const ids = (cb.dataset.crews||'').split(',');
+      picker.querySelectorAll('.tbx-crew-cb').forEach(x=>{ if(ids.includes(x.value)) x.checked = cb.checked; });
+      toolboxCrewFilter = Array.from(picker.querySelectorAll('.tbx-crew-cb:checked')).map(x=>x.value); syncCrewPicker(); renderToolboxMatrix();
+    }; });
+    syncCrewPicker();
+  }
   document.getElementById('tbx_project').onchange = e=>{ toolboxProjectId = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_month').onchange = e=>{ if(e.target.value) toolboxMonth = e.target.value; renderToolboxMatrix(); };
   document.getElementById('tbx_search').oninput = e=>{ toolboxSearchQuery = e.target.value; toolboxApplySearchFilter(); };
@@ -4428,6 +4490,8 @@ function buildToolboxMatrixData(projectId, month, filterContractorId, filterCrew
         const validDays = new Set(days.filter(d=> crewIdAtDate(w.id, dateStr(d))===cr.id));
         if(validDays.size>0) rowsForCrew.push({worker:w, validDays});
       });
+      // inactive workers (still shown for a month in which they were marked present) go to the bottom of the crew's list; stable, so each group keeps its ת.ז order
+      rowsForCrew.sort((a,b)=> (a.worker.active===false ? 1 : 0) - (b.worker.active===false ? 1 : 0));
       if(rowsForCrew.length>0) crewBlocks.push({crew:cr, rows:rowsForCrew});
     });
     if(crewBlocks.length>0) contractorBlocks.push({contractor:c, crewBlocks});
@@ -4441,10 +4505,11 @@ function renderToolboxMatrix(){
     body.innerHTML = '<div class="note">יש לבחור פרויקט וחודש כדי לסמן נוכחות.</div>';
     return;
   }
-  const {days, presenceByDay, contractorBlocks} = buildToolboxMatrixData(toolboxProjectId, toolboxMonth, '', '');
+  toolboxCrewFilter = toolboxCrewFilter.filter(id=>crews.some(c=>c.id===id));
+  const {days, presenceByDay, contractorBlocks} = buildToolboxMatrixData(toolboxProjectId, toolboxMonth, '', toolboxCrewFilter);
   const numDays = days.length;
   if(contractorBlocks.length===0){
-    body.innerHTML = '<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים פעילים משויכים לחודש שנבחר. אפשר להגדיר בטאב "קבלני משנה".</div>';
+    body.innerHTML = toolboxCrewFilter.length>0 ? '<div class="empty">אין פועלים בקבוצות שנבחרו לחודש זה. אפשר לשנות את הבחירה בכפתור "קבוצות" או להציג את כל הקבוצות.</div>' : '<div class="empty">אין עדיין קבלנים עם קבוצות עבודה ופועלים פעילים משויכים לחודש שנבחר. אפשר להגדיר בטאב "קבלני משנה".</div>';
     return;
   }
   // לא עובדים בשבת - עמודת השבת מסומנת בצבע כחול (ראו .tbx-saturday ב-CSS) בכל מקום
